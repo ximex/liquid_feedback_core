@@ -4543,7 +4543,7 @@ CREATE FUNCTION "check_issue"
         RETURN NULL;
       END IF;
       IF "persist"."phase_finished" THEN
-        if "persist"."state" = 'discussion' THEN
+        IF "persist"."state" = 'discussion' THEN
           UPDATE "issue" SET
             "state"          = 'verification',
             "half_frozen"    = "phase_finished",
