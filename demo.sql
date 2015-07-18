@@ -5,10 +5,13 @@ BEGIN;
 
 INSERT INTO "system_setting" ("member_ttl") VALUES ('31 days');
 
-INSERT INTO "contingent" ("time_frame", "text_entry_limit", "initiative_limit") VALUES
-  ('60 minutes', 6, 1),
-  ('1 day', 60, 10),
-  ('1 week', 120, 20);
+INSERT INTO "contingent" ("polling", "time_frame", "text_entry_limit", "initiative_limit") VALUES
+  (FALSE, '60 minutes', 6, 1),
+  (FALSE, '1 day', 60, 10),
+  (FALSE, '1 week', 120, 20),
+  (TRUE, '60 minutes', 6, 1),
+  (TRUE, '1 day', 60, 10),
+  (TRUE, '1 week', 120, 20);
 
 INSERT INTO "policy" (
     "index",
