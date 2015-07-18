@@ -7,7 +7,7 @@
 BEGIN;
 
 CREATE VIEW "liquid_feedback_version" AS
-  SELECT * FROM (VALUES ('3.0.4', 3, 0, 4))
+  SELECT * FROM (VALUES ('3.0.5', 3, 0, 5))
   AS "subquery"("string", "major", "minor", "revision");
 
 
@@ -460,6 +460,7 @@ CREATE TABLE "unit" (
         "active"                BOOLEAN         NOT NULL DEFAULT TRUE,
         "name"                  TEXT            NOT NULL,
         "description"           TEXT            NOT NULL DEFAULT '',
+        "external_reference"    TEXT,
         "member_count"          INT4,
         "text_search_data"      TSVECTOR );
 CREATE INDEX "unit_root_idx" ON "unit" ("id") WHERE "parent_id" ISNULL;
@@ -474,9 +475,10 @@ CREATE TRIGGER "update_text_search_data"
 
 COMMENT ON TABLE "unit" IS 'Organizational units organized as trees; Delegations are not inherited through these trees.';
 
-COMMENT ON COLUMN "unit"."parent_id"    IS 'Parent id of tree node; Multiple roots allowed';
-COMMENT ON COLUMN "unit"."active"       IS 'TRUE means new issues can be created in areas of this unit';
-COMMENT ON COLUMN "unit"."member_count" IS 'Count of members as determined by column "voting_right" in table "privilege"';
+COMMENT ON COLUMN "unit"."parent_id"          IS 'Parent id of tree node; Multiple roots allowed';
+COMMENT ON COLUMN "unit"."active"             IS 'TRUE means new issues can be created in areas of this unit';
+COMMENT ON COLUMN "unit"."external_reference" IS 'Opaque data field to store an external reference';
+COMMENT ON COLUMN "unit"."member_count"       IS 'Count of members as determined by column "voting_right" in table "privilege"';
 
 
 CREATE TABLE "unit_setting" (
@@ -495,6 +497,7 @@ CREATE TABLE "area" (
         "active"                BOOLEAN         NOT NULL DEFAULT TRUE,
         "name"                  TEXT            NOT NULL,
         "description"           TEXT            NOT NULL DEFAULT '',
+        "external_reference"    TEXT,
         "direct_member_count"   INT4,
         "member_weight"         INT4,
         "text_search_data"      TSVECTOR );
@@ -510,6 +513,7 @@ CREATE TRIGGER "update_text_search_data"
 COMMENT ON TABLE "area" IS 'Subject areas';
 
 COMMENT ON COLUMN "area"."active"              IS 'TRUE means new issues can be created in this area';
+COMMENT ON COLUMN "area"."external_reference"  IS 'Opaque data field to store an external reference';
 COMMENT ON COLUMN "area"."direct_member_count" IS 'Number of active members of that area (ignoring their weight), as calculated from view "area_member_count"';
 COMMENT ON COLUMN "area"."member_weight"       IS 'Same as "direct_member_count" but respecting delegations';
 
@@ -559,6 +563,7 @@ CREATE TABLE "issue" (
         "area_id"               INT4            NOT NULL REFERENCES "area" ("id") ON DELETE CASCADE ON UPDATE CASCADE,
         "policy_id"             INT4            NOT NULL REFERENCES "policy" ("id") ON DELETE RESTRICT ON UPDATE CASCADE,
         "admin_notice"          TEXT,
+        "external_reference"    TEXT,
         "state"                 "issue_state"   NOT NULL DEFAULT 'admission',
         "phase_finished"        TIMESTAMPTZ,
         "created"               TIMESTAMPTZ     NOT NULL DEFAULT now(),
@@ -626,6 +631,7 @@ CREATE INDEX "issue_closed_idx_canceled" ON "issue" ("closed") WHERE "fully_froz
 COMMENT ON TABLE "issue" IS 'Groups of initiatives';
 
 COMMENT ON COLUMN "issue"."admin_notice"            IS 'Public notice by admin to explain manual interventions, or to announce corrections';
+COMMENT ON COLUMN "issue"."external_reference"      IS 'Opaque data field to store an external reference';
 COMMENT ON COLUMN "issue"."phase_finished"          IS 'Set to a value NOTNULL, if the current phase has finished, but calculations are pending; No changes in this issue shall be made by the frontend or API when this value is set';
 COMMENT ON COLUMN "issue"."accepted"                IS 'Point in time, when one initiative of issue reached the "issue_quorum"';
 COMMENT ON COLUMN "issue"."half_frozen"             IS 'Point in time, when "discussion_time" has elapsed; Frontends must ensure that for half_frozen issues a) initiatives are not revoked, b) no new drafts are created, c) no initiators are added or removed.';
@@ -676,6 +682,7 @@ CREATE TABLE "initiative" (
         "revoked"               TIMESTAMPTZ,
         "revoked_by_member_id"  INT4            REFERENCES "member" ("id") ON DELETE RESTRICT ON UPDATE CASCADE,
         "suggested_initiative_id" INT4          REFERENCES "initiative" ("id") ON DELETE CASCADE ON UPDATE CASCADE,
+        "external_reference"    TEXT,
         "admitted"              BOOLEAN,
         "supporter_count"                    INT4,
         "informed_supporter_count"           INT4,
@@ -735,6 +742,7 @@ COMMENT ON COLUMN "initiative"."polling"                IS 'Initiative does not 
 COMMENT ON COLUMN "initiative"."discussion_url"         IS 'URL pointing to a discussion platform for this initiative';
 COMMENT ON COLUMN "initiative"."revoked"                IS 'Point in time, when one initiator decided to revoke the initiative';
 COMMENT ON COLUMN "initiative"."revoked_by_member_id"   IS 'Member, who decided to revoke the initiative';
+COMMENT ON COLUMN "initiative"."external_reference"     IS 'Opaque data field to store an external reference';
 COMMENT ON COLUMN "initiative"."admitted"               IS 'TRUE, if initiative reaches the "initiative_quorum" when freezing the issue';
 COMMENT ON COLUMN "initiative"."supporter_count"                    IS 'Calculated from table "direct_supporter_snapshot"';
 COMMENT ON COLUMN "initiative"."informed_supporter_count"           IS 'Calculated from table "direct_supporter_snapshot"';
@@ -802,6 +810,7 @@ CREATE TABLE "draft" (
         "author_id"             INT4            NOT NULL REFERENCES "member" ("id") ON DELETE RESTRICT ON UPDATE CASCADE,
         "formatting_engine"     TEXT,
         "content"               TEXT            NOT NULL,
+        "external_reference"    TEXT,
         "text_search_data"      TSVECTOR );
 CREATE INDEX "draft_created_idx" ON "draft" ("created");
 CREATE INDEX "draft_author_id_created_idx" ON "draft" ("author_id", "created");
@@ -813,8 +822,9 @@ CREATE TRIGGER "update_text_search_data"
 
 COMMENT ON TABLE "draft" IS 'Drafts of initiatives to solve issues; Frontends must ensure that new drafts for initiatives of half_frozen, fully_frozen or closed issues can''t be created.';
 
-COMMENT ON COLUMN "draft"."formatting_engine" IS 'Allows different formatting engines (i.e. wiki formats) to be used';
-COMMENT ON COLUMN "draft"."content"           IS 'Text of the draft in a format depending on the field "formatting_engine"';
+COMMENT ON COLUMN "draft"."formatting_engine"  IS 'Allows different formatting engines (i.e. wiki formats) to be used';
+COMMENT ON COLUMN "draft"."content"            IS 'Text of the draft in a format depending on the field "formatting_engine"';
+COMMENT ON COLUMN "draft"."external_reference" IS 'Opaque data field to store an external reference';
 
 
 CREATE TABLE "rendered_draft" (
@@ -837,6 +847,7 @@ CREATE TABLE "suggestion" (
         "name"                  TEXT            NOT NULL,
         "formatting_engine"     TEXT,
         "content"               TEXT            NOT NULL DEFAULT '',
+        "external_reference"    TEXT,
         "text_search_data"      TSVECTOR,
         "minus2_unfulfilled_count" INT4,
         "minus2_fulfilled_count"   INT4,
@@ -859,6 +870,7 @@ CREATE TRIGGER "update_text_search_data"
 COMMENT ON TABLE "suggestion" IS 'Suggestions to initiators, to change the current draft; must not be deleted explicitly, as they vanish automatically if the last opinion is deleted';
 
 COMMENT ON COLUMN "suggestion"."draft_id"                 IS 'Draft, which the author has seen when composing the suggestion; should always be set by a frontend, but defaults to current draft of the initiative (implemented by trigger "default_for_draft_id")';
+COMMENT ON COLUMN "suggestion"."external_reference"       IS 'Opaque data field to store an external reference';
 COMMENT ON COLUMN "suggestion"."minus2_unfulfilled_count" IS 'Calculated from table "direct_supporter_snapshot", not requiring informed supporters';
 COMMENT ON COLUMN "suggestion"."minus2_fulfilled_count"   IS 'Calculated from table "direct_supporter_snapshot", not requiring informed supporters';
 COMMENT ON COLUMN "suggestion"."minus1_unfulfilled_count" IS 'Calculated from table "direct_supporter_snapshot", not requiring informed supporters';
