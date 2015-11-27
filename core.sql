@@ -145,7 +145,7 @@ CREATE TABLE "member" (
         CONSTRAINT "active_requires_activated_and_last_activity"
           CHECK ("active" = FALSE OR ("activated" NOTNULL AND "last_activity" NOTNULL)),
         CONSTRAINT "authority_requires_uid_and_vice_versa" 
-          CHECK ("authority" NOTNULL = "authority_uid" NOTNULL),
+          CHECK (("authority" NOTNULL) = ("authority_uid" NOTNULL)),
         CONSTRAINT "authority_uid_unique_per_authority"
           UNIQUE ("authority", "authority_uid"),
         CONSTRAINT "authority_login_requires_authority"
@@ -201,30 +201,6 @@ COMMENT ON COLUMN "member"."external_memberships" IS 'Other organizations the me
 COMMENT ON COLUMN "member"."external_posts"       IS 'Posts (offices) outside the organization';
 COMMENT ON COLUMN "member"."formatting_engine"    IS 'Allows different formatting engines (i.e. wiki formats) to be used for "member"."statement"';
 COMMENT ON COLUMN "member"."statement"            IS 'Freely chosen text of the member for his/her profile';
-
-
--- DEPRECATED API TABLES --
-
-CREATE TYPE "application_access_level" AS ENUM
-  ('member', 'full', 'pseudonymous', 'anonymous');
-
-COMMENT ON TYPE "application_access_level" IS 'DEPRECATED, WILL BE REMOVED! Access privileges for applications using the API';
-
-
-CREATE TABLE "member_application" (
-        "id"                    SERIAL8         PRIMARY KEY,
-        UNIQUE ("member_id", "name"),
-        "member_id"             INT4            NOT NULL REFERENCES "member" ("id")
-                                                ON DELETE CASCADE ON UPDATE CASCADE,
-        "name"                  TEXT            NOT NULL,
-        "comment"               TEXT,
-        "access_level" "application_access_level" NOT NULL,
-        "key"                   TEXT            NOT NULL UNIQUE,
-        "last_usage"            TIMESTAMPTZ );
-
-COMMENT ON TABLE "member_application" IS 'DEPRECATED, WILL BE REMOVED! Registered application being allowed to use the API';
-
--- END OF DEPRECARED API TABLES --
 
 
 CREATE TABLE "member_history" (
@@ -385,7 +361,8 @@ CREATE TABLE "policy" (
         "name"                  TEXT            NOT NULL UNIQUE,
         "description"           TEXT            NOT NULL DEFAULT '',
         "polling"               BOOLEAN         NOT NULL DEFAULT FALSE,
-        "admission_time"        INTERVAL,
+        "min_admission_time"    INTERVAL,
+        "max_admission_time"    INTERVAL,
         "discussion_time"       INTERVAL,
         "verification_time"     INTERVAL,
         "voting_time"           INTERVAL,
@@ -409,17 +386,23 @@ CREATE TABLE "policy" (
         "no_multistage_majority"        BOOLEAN NOT NULL DEFAULT FALSE,
         CONSTRAINT "timing" CHECK (
           ( "polling" = FALSE AND
-            "admission_time" NOTNULL AND "discussion_time" NOTNULL AND
-            "verification_time" NOTNULL AND "voting_time" NOTNULL ) OR
+            "min_admission_time" NOTNULL AND "max_admission_time" NOTNULL AND
+            "discussion_time" NOTNULL AND
+            "verification_time" NOTNULL AND
+            "voting_time" NOTNULL ) OR
           ( "polling" = TRUE AND
-            "admission_time" ISNULL AND "discussion_time" NOTNULL AND
-            "verification_time" NOTNULL AND "voting_time" NOTNULL ) OR
+            "min_admission_time" ISNULL AND "max_admission_time" ISNULL AND
+            "discussion_time" NOTNULL AND
+            "verification_time" NOTNULL AND
+            "voting_time" NOTNULL ) OR
           ( "polling" = TRUE AND
-            "admission_time" ISNULL AND "discussion_time" ISNULL AND
-            "verification_time" ISNULL AND "voting_time" ISNULL ) ),
+            "min_admission_time" ISNULL AND "max_admission_time" ISNULL AND
+            "discussion_time" ISNULL AND
+            "verification_time" ISNULL AND
+            "voting_time" ISNULL ) ),
         CONSTRAINT "issue_quorum_if_and_only_if_not_polling" CHECK (
-          "polling" = "issue_quorum_num" ISNULL AND
-          "polling" = "issue_quorum_den" ISNULL ),
+          "polling" = ("issue_quorum_num" ISNULL) AND
+          "polling" = ("issue_quorum_den" ISNULL) ),
         CONSTRAINT "no_reverse_beat_path_requires_tuple_defeat_strength" CHECK (
           "defeat_strength" = 'tuple'::"defeat_strength" OR
           "no_reverse_beat_path" = FALSE ) );
@@ -429,8 +412,9 @@ COMMENT ON TABLE "policy" IS 'Policies for a particular proceeding type (timelim
 
 COMMENT ON COLUMN "policy"."index"                 IS 'Determines the order in listings';
 COMMENT ON COLUMN "policy"."active"                IS 'TRUE = policy can be used for new issues';
-COMMENT ON COLUMN "policy"."polling"               IS 'TRUE = special policy for non-user-generated issues without issue quorum, where certain initiatives (those having the "polling" flag set) do not need to pass the initiative quorum; "admission_time" MUST be set to NULL, the other timings may be set to NULL altogether, allowing individual timing for those issues';
-COMMENT ON COLUMN "policy"."admission_time"        IS 'Maximum duration of issue state ''admission''; Maximum time an issue stays open without being "accepted"';
+COMMENT ON COLUMN "policy"."polling"               IS 'TRUE = special policy for non-user-generated issues without issue quorum, where certain initiatives (those having the "polling" flag set) do not need to pass the initiative quorum; "min_admission_time" and "max_admission_time" MUST be set to NULL, the other timings may be set to NULL altogether, allowing individual timing for those issues';
+COMMENT ON COLUMN "policy"."min_admission_time"    IS 'Minimum duration of issue state ''admission''; Minimum time an issue stays open';
+COMMENT ON COLUMN "policy"."max_admission_time"    IS 'Maximum duration of issue state ''admission''; Maximum time an issue stays open without being "accepted"';
 COMMENT ON COLUMN "policy"."discussion_time"       IS 'Duration of issue state ''discussion''; Regular time until an issue is "half_frozen" after being "accepted"';
 COMMENT ON COLUMN "policy"."verification_time"     IS 'Duration of issue state ''verification''; Regular time until an issue is "fully_frozen" (e.g. entering issue state ''voting'') after being "half_frozen"';
 COMMENT ON COLUMN "policy"."voting_time"           IS 'Duration of issue state ''voting''; Time after an issue is "fully_frozen" but not "closed" (duration of issue state ''voting'')';
@@ -572,7 +556,8 @@ CREATE TABLE "issue" (
         "fully_frozen"          TIMESTAMPTZ,
         "closed"                TIMESTAMPTZ,
         "cleaned"               TIMESTAMPTZ,
-        "admission_time"        INTERVAL,
+        "min_admission_time"    INTERVAL,
+        "max_admission_time"    INTERVAL,
         "discussion_time"       INTERVAL        NOT NULL,
         "verification_time"     INTERVAL        NOT NULL,
         "voting_time"           INTERVAL        NOT NULL,
@@ -582,7 +567,8 @@ CREATE TABLE "issue" (
         "voter_count"           INT4,
         "status_quo_schulze_rank" INT4,
         CONSTRAINT "admission_time_not_null_unless_instantly_accepted" CHECK (
-          "admission_time" NOTNULL OR ("accepted" NOTNULL AND "accepted" = "created") ),
+          ("min_admission_time" NOTNULL) = ("max_admission_time" NOTNULL) AND
+          "min_admission_time" NOTNULL OR ("accepted" NOTNULL AND "accepted" = "created") ),
         CONSTRAINT "valid_state" CHECK (
           (
             ("accepted" ISNULL  AND "half_frozen" ISNULL  AND "fully_frozen" ISNULL ) OR
@@ -617,7 +603,7 @@ CREATE TABLE "issue" (
         CONSTRAINT "freeze_requires_snapshot"
           CHECK ("fully_frozen" ISNULL OR "snapshot" NOTNULL),
         CONSTRAINT "set_both_or_none_of_snapshot_and_latest_snapshot_event"
-          CHECK ("snapshot" NOTNULL = "latest_snapshot_event" NOTNULL) );
+          CHECK (("snapshot" NOTNULL) = ("latest_snapshot_event" NOTNULL)) );
 CREATE INDEX "issue_area_id_idx" ON "issue" ("area_id");
 CREATE INDEX "issue_policy_id_idx" ON "issue" ("policy_id");
 CREATE INDEX "issue_created_idx" ON "issue" ("created");
@@ -636,9 +622,10 @@ COMMENT ON COLUMN "issue"."phase_finished"          IS 'Set to a value NOTNULL, 
 COMMENT ON COLUMN "issue"."accepted"                IS 'Point in time, when one initiative of issue reached the "issue_quorum"';
 COMMENT ON COLUMN "issue"."half_frozen"             IS 'Point in time, when "discussion_time" has elapsed; Frontends must ensure that for half_frozen issues a) initiatives are not revoked, b) no new drafts are created, c) no initiators are added or removed.';
 COMMENT ON COLUMN "issue"."fully_frozen"            IS 'Point in time, when "verification_time" has elapsed and voting has started; Frontends must ensure that for fully_frozen issues additionally to the restrictions for half_frozen issues a) initiatives are not created, b) no interest is created or removed, c) no supporters are added or removed, d) no opinions are created, changed or deleted.';
-COMMENT ON COLUMN "issue"."closed"                  IS 'Point in time, when "admission_time" or "voting_time" have elapsed, and issue is no longer active; Frontends must ensure that for closed issues additionally to the restrictions for half_frozen and fully_frozen issues a) no voter is added or removed to/from the direct_voter table, b) no votes are added, modified or removed.';
+COMMENT ON COLUMN "issue"."closed"                  IS 'Point in time, when "max_admission_time" or "voting_time" have elapsed, and issue is no longer active; Frontends must ensure that for closed issues additionally to the restrictions for half_frozen and fully_frozen issues a) no voter is added or removed to/from the direct_voter table, b) no votes are added, modified or removed.';
 COMMENT ON COLUMN "issue"."cleaned"                 IS 'Point in time, when discussion data and votes had been deleted';
-COMMENT ON COLUMN "issue"."admission_time"          IS 'Copied from "policy" table at creation of issue';
+COMMENT ON COLUMN "issue"."min_admission_time"      IS 'Copied from "policy" table at creation of issue';
+COMMENT ON COLUMN "issue"."max_admission_time"      IS 'Copied from "policy" table at creation of issue';
 COMMENT ON COLUMN "issue"."discussion_time"         IS 'Copied from "policy" table at creation of issue';
 COMMENT ON COLUMN "issue"."verification_time"       IS 'Copied from "policy" table at creation of issue';
 COMMENT ON COLUMN "issue"."voting_time"             IS 'Copied from "policy" table at creation of issue';
@@ -705,7 +692,7 @@ CREATE TABLE "initiative" (
         "rank"                  INT4,
         "text_search_data"      TSVECTOR,
         CONSTRAINT "all_or_none_of_revoked_and_revoked_by_member_id_must_be_null"
-          CHECK ("revoked" NOTNULL = "revoked_by_member_id" NOTNULL),
+          CHECK (("revoked" NOTNULL) = ("revoked_by_member_id" NOTNULL)),
         CONSTRAINT "non_revoked_initiatives_cant_suggest_other"
           CHECK ("revoked" NOTNULL OR "suggested_initiative_id" ISNULL),
         CONSTRAINT "revoked_initiatives_cant_be_admitted"
@@ -1800,8 +1787,11 @@ CREATE FUNCTION "copy_timings_trigger"()
     BEGIN
       SELECT * INTO "policy_row" FROM "policy"
         WHERE "id" = NEW."policy_id";
-      IF NEW."admission_time" ISNULL THEN
-        NEW."admission_time" := "policy_row"."admission_time";
+      IF NEW."min_admission_time" ISNULL THEN
+        NEW."min_admission_time" := "policy_row"."min_admission_time";
+      END IF;
+      IF NEW."max_admission_time" ISNULL THEN
+        NEW."max_admission_time" := "policy_row"."max_admission_time";
       END IF;
       IF NEW."discussion_time" ISNULL THEN
         NEW."discussion_time" := "policy_row"."discussion_time";
@@ -4410,7 +4400,7 @@ CREATE FUNCTION "check_issue"
         "persist"."state" := "issue_row"."state";
         IF
           ( "issue_row"."state" = 'admission' AND now() >=
-            "issue_row"."created" + "issue_row"."admission_time" ) OR
+            "issue_row"."created" + "issue_row"."max_admission_time" ) OR
           ( "issue_row"."state" = 'discussion' AND now() >=
             "issue_row"."accepted" + "issue_row"."discussion_time" ) OR
           ( "issue_row"."state" = 'verification' AND now() >=
@@ -4533,13 +4523,17 @@ CREATE FUNCTION "check_issue"
           FOR UPDATE;
         SELECT * INTO "policy_row"
           FROM "policy" WHERE "id" = "issue_row"."policy_id";
-        IF EXISTS (
-          SELECT NULL FROM "initiative"
-          WHERE "issue_id" = "issue_id_p"
-          AND "supporter_count" > 0
-          AND "supporter_count" * "policy_row"."issue_quorum_den"
-          >= "issue_row"."population" * "policy_row"."issue_quorum_num"
-        ) THEN
+        IF 
+          ( now() >=
+            "issue_row"."created" + "issue_row"."min_admission_time" ) AND
+          EXISTS (
+            SELECT NULL FROM "initiative"
+            WHERE "issue_id" = "issue_id_p"
+            AND "supporter_count" > 0
+            AND "supporter_count" * "policy_row"."issue_quorum_den"
+            >= "issue_row"."population" * "policy_row"."issue_quorum_num"
+          )
+        THEN
           UPDATE "issue" SET
             "state"          = 'discussion',
             "accepted"       = coalesce("phase_finished", now()),
