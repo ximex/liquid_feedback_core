@@ -7,7 +7,7 @@
 BEGIN;
 
 CREATE VIEW "liquid_feedback_version" AS
-  SELECT * FROM (VALUES ('3.0.5', 3, 0, 5))
+  SELECT * FROM (VALUES ('3.1.0', 3, 1, 0))
   AS "subquery"("string", "major", "minor", "revision");
 
 
@@ -664,7 +664,6 @@ CREATE TABLE "initiative" (
         "id"                    SERIAL4         PRIMARY KEY,
         "name"                  TEXT            NOT NULL,
         "polling"               BOOLEAN         NOT NULL DEFAULT FALSE,
-        "discussion_url"        TEXT,
         "created"               TIMESTAMPTZ     NOT NULL DEFAULT now(),
         "revoked"               TIMESTAMPTZ,
         "revoked_by_member_id"  INT4            REFERENCES "member" ("id") ON DELETE RESTRICT ON UPDATE CASCADE,
@@ -720,13 +719,11 @@ CREATE INDEX "initiative_text_search_data_idx" ON "initiative" USING gin ("text_
 CREATE TRIGGER "update_text_search_data"
   BEFORE INSERT OR UPDATE ON "initiative"
   FOR EACH ROW EXECUTE PROCEDURE
-  tsvector_update_trigger('text_search_data', 'pg_catalog.simple',
-    "name", "discussion_url");
+  tsvector_update_trigger('text_search_data', 'pg_catalog.simple', "name");
 
 COMMENT ON TABLE "initiative" IS 'Group of members publishing drafts for resolutions to be passed; Frontends must ensure that initiatives of half_frozen issues are not revoked, and that initiatives of fully_frozen or closed issues are neither revoked nor created.';
 
 COMMENT ON COLUMN "initiative"."polling"                IS 'Initiative does not need to pass the initiative quorum (see "policy"."polling")';
-COMMENT ON COLUMN "initiative"."discussion_url"         IS 'URL pointing to a discussion platform for this initiative';
 COMMENT ON COLUMN "initiative"."revoked"                IS 'Point in time, when one initiator decided to revoke the initiative';
 COMMENT ON COLUMN "initiative"."revoked_by_member_id"   IS 'Member, who decided to revoke the initiative';
 COMMENT ON COLUMN "initiative"."external_reference"     IS 'Opaque data field to store an external reference';
