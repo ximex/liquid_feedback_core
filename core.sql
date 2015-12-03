@@ -1201,7 +1201,7 @@ CREATE TABLE "event" (
         FOREIGN KEY ("initiative_id", "suggestion_id")
           REFERENCES "suggestion" ("initiative_id", "id")
           ON DELETE CASCADE ON UPDATE CASCADE,
-        CONSTRAINT "null_constraints_for_issue_state_changed" CHECK (
+        CONSTRAINT "null_constr_for_issue_state_changed" CHECK (
           "event" != 'issue_state_changed' OR (
             "member_id"     ISNULL  AND
             "issue_id"      NOTNULL AND
@@ -1209,7 +1209,7 @@ CREATE TABLE "event" (
             "initiative_id" ISNULL  AND
             "draft_id"      ISNULL  AND
             "suggestion_id" ISNULL  )),
-        CONSTRAINT "null_constraints_for_initiative_creation_or_revocation_or_new_draft" CHECK (
+        CONSTRAINT "null_constr_for_initiative_creation_or_revocation_or_new_draft" CHECK (
           "event" NOT IN (
             'initiative_created_in_new_issue',
             'initiative_created_in_existing_issue',
@@ -1222,7 +1222,7 @@ CREATE TABLE "event" (
             "initiative_id" NOTNULL AND
             "draft_id"      NOTNULL AND
             "suggestion_id" ISNULL  )),
-        CONSTRAINT "null_constraints_for_suggestion_creation" CHECK (
+        CONSTRAINT "null_constr_for_suggestion_creation" CHECK (
           "event" != 'suggestion_created' OR (
             "member_id"     NOTNULL AND
             "issue_id"      NOTNULL AND
