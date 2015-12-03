@@ -19,6 +19,7 @@ ALTER TABLE "policy" DROP CONSTRAINT "timing";
 ALTER TABLE "policy" ADD CONSTRAINT "timing" CHECK (
   ( "polling" = FALSE AND
     "min_admission_time" NOTNULL AND "max_admission_time" NOTNULL AND
+    "min_admission_time" <= "max_admission_time"
     "discussion_time" NOTNULL AND
     "verification_time" NOTNULL AND
     "voting_time" NOTNULL ) OR

@@ -387,6 +387,7 @@ CREATE TABLE "policy" (
         CONSTRAINT "timing" CHECK (
           ( "polling" = FALSE AND
             "min_admission_time" NOTNULL AND "max_admission_time" NOTNULL AND
+            "min_admission_time" <= "max_admission_time" AND
             "discussion_time" NOTNULL AND
             "verification_time" NOTNULL AND
             "voting_time" NOTNULL ) OR
