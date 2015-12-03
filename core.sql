@@ -568,7 +568,7 @@ CREATE TABLE "issue" (
         "status_quo_schulze_rank" INT4,
         CONSTRAINT "admission_time_not_null_unless_instantly_accepted" CHECK (
           ("min_admission_time" NOTNULL) = ("max_admission_time" NOTNULL) AND
-          "min_admission_time" NOTNULL OR ("accepted" NOTNULL AND "accepted" = "created") ),
+          ("min_admission_time" NOTNULL OR ("accepted" NOTNULL AND "accepted" = "created")) ),
         CONSTRAINT "valid_state" CHECK (
           (
             ("accepted" ISNULL  AND "half_frozen" ISNULL  AND "fully_frozen" ISNULL ) OR
