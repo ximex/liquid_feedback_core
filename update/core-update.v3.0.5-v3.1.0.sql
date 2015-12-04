@@ -11,28 +11,10 @@ ALTER TABLE "member" ADD CONSTRAINT "authority_requires_uid_and_vice_versa" CHEC
 DROP TABLE "member_application";
 DROP TYPE "application_access_level";
 
-ALTER TABLE "policy" ADD COLUMN "min_admission_time" INTERVAL DEFAULT '0';
-ALTER TABLE "policy" ALTER COLUMN "min_admission_time" DROP DEFAULT;
+ALTER TABLE "policy" ADD COLUMN "min_admission_time" INTERVAL;
 ALTER TABLE "policy" RENAME COLUMN "admission_time" TO "max_admission_time";
 
-ALTER TABLE "policy" DROP CONSTRAINT "timing";
-ALTER TABLE "policy" ADD CONSTRAINT "timing" CHECK (
-  ( "polling" = FALSE AND
-    "min_admission_time" NOTNULL AND "max_admission_time" NOTNULL AND
-    "min_admission_time" <= "max_admission_time" AND
-    "discussion_time" NOTNULL AND
-    "verification_time" NOTNULL AND
-    "voting_time" NOTNULL ) OR
-  ( "polling" = TRUE AND
-    "min_admission_time" ISNULL AND "max_admission_time" ISNULL AND
-    "discussion_time" NOTNULL AND
-    "verification_time" NOTNULL AND
-    "voting_time" NOTNULL ) OR
-  ( "polling" = TRUE AND
-    "min_admission_time" ISNULL AND "max_admission_time" ISNULL AND
-    "discussion_time" ISNULL AND
-    "verification_time" ISNULL AND
-    "voting_time" ISNULL ) );
+ALTER TABLE "policy" DROP CONSTRAINT "timing";  -- re-added after UPDATE
 
 ALTER TABLE "policy" DROP CONSTRAINT "issue_quorum_if_and_only_if_not_polling";
 ALTER TABLE "policy" ADD CONSTRAINT "issue_quorum_if_and_only_if_not_polling" CHECK (
@@ -42,14 +24,10 @@ ALTER TABLE "policy" ADD CONSTRAINT "issue_quorum_if_and_only_if_not_polling" CH
 COMMENT ON COLUMN "policy"."polling" IS 'TRUE = special policy for non-user-generated issues without issue quorum, where certain initiatives (those having the "polling" flag set) do not need to pass the initiative quorum; "min_admission_time" and "max_admission_time" MUST be set to NULL, the other timings may be set to NULL altogether, allowing individual timing for those issues';
 COMMENT ON COLUMN "policy"."min_admission_time" IS 'Minimum duration of issue state ''admission''; Minimum time an issue stays open';
 
-ALTER TABLE "issue" ADD COLUMN "min_admission_time" INTERVAL DEFAULT '0';
-ALTER TABLE "issue" ALTER COLUMN "min_admission_time" DROP DEFAULT;
+ALTER TABLE "issue" ADD COLUMN "min_admission_time" INTERVAL;
 ALTER TABLE "issue" RENAME COLUMN "admission_time" TO "max_admission_time";
 
-ALTER TABLE "issue" DROP CONSTRAINT "admission_time_not_null_unless_instantly_accepted";
-ALTER TABLE "issue" ADD CONSTRAINT "admission_time_not_null_unless_instantly_accepted" CHECK (
-  ("min_admission_time" NOTNULL) = ("max_admission_time" NOTNULL) AND
-  ("min_admission_time" NOTNULL OR ("accepted" NOTNULL AND "accepted" = "created")) );
+ALTER TABLE "issue" DROP CONSTRAINT "admission_time_not_null_unless_instantly_accepted";  -- re-added after UPDATE
 
 ALTER TABLE "issue" DROP CONSTRAINT "set_both_or_none_of_snapshot_and_latest_snapshot_event";
 ALTER TABLE "issue" ADD CONSTRAINT "set_both_or_none_of_snapshot_and_latest_snapshot_event" CHECK (
@@ -352,5 +330,42 @@ CREATE OR REPLACE FUNCTION "check_issue"
       RETURN NULL;
     END;
   $$;
+
+-- temporarily drop deferred trigger to allow UPDATE with subsequent ALTER TABLE:
+DROP TRIGGER "issue_requires_first_initiative" ON "issue";
+
+-- set "min_admission_time" values where appropriate:
+UPDATE "policy" SET "min_admission_time" = '0' WHERE "max_admission_time" NOTNULL;
+UPDATE "issue" SET "min_admission_time" = '0' WHERE "max_admission_time" NOTNULL;
+
+-- add constraints related to "min_admission_time" after UPDATE:
+ALTER TABLE "policy" ADD CONSTRAINT "timing" CHECK (
+  ( "polling" = FALSE AND
+    "min_admission_time" NOTNULL AND "max_admission_time" NOTNULL AND
+    "min_admission_time" <= "max_admission_time" AND
+    "discussion_time" NOTNULL AND
+    "verification_time" NOTNULL AND
+    "voting_time" NOTNULL ) OR
+  ( "polling" = TRUE AND
+    "min_admission_time" ISNULL AND "max_admission_time" ISNULL AND
+    "discussion_time" NOTNULL AND
+    "verification_time" NOTNULL AND
+    "voting_time" NOTNULL ) OR
+  ( "polling" = TRUE AND
+    "min_admission_time" ISNULL AND "max_admission_time" ISNULL AND
+    "discussion_time" ISNULL AND
+    "verification_time" ISNULL AND
+    "voting_time" ISNULL ) );
+
+ALTER TABLE "issue" ADD CONSTRAINT "admission_time_not_null_unless_instantly_accepted" CHECK (
+  ("min_admission_time" NOTNULL) = ("max_admission_time" NOTNULL) AND
+  ("min_admission_time" NOTNULL OR ("accepted" NOTNULL AND "accepted" = "created")) );
+
+-- re-add temporarily dropped trigger:
+CREATE CONSTRAINT TRIGGER "issue_requires_first_initiative"
+  AFTER INSERT OR UPDATE ON "issue" DEFERRABLE INITIALLY DEFERRED
+  FOR EACH ROW EXECUTE PROCEDURE
+  "issue_requires_first_initiative_trigger"();
+COMMENT ON TRIGGER "issue_requires_first_initiative" ON "issue" IS 'Ensure that new issues have at least one initiative';
 
 COMMIT;
