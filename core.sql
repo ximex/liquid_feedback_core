@@ -7,7 +7,7 @@
 BEGIN;
 
 CREATE VIEW "liquid_feedback_version" AS
-  SELECT * FROM (VALUES ('3.1.0', 3, 1, 0))
+  SELECT * FROM (VALUES ('3.2.0', 3, 2, 0))
   AS "subquery"("string", "major", "minor", "revision");
 
 
@@ -119,7 +119,7 @@ CREATE TABLE "member" (
         "notify_email_secret"          TEXT     UNIQUE,
         "notify_email_secret_expiry"   TIMESTAMPTZ,
         "notify_email_lock_expiry"     TIMESTAMPTZ,
-        "notify_level"          "notify_level",
+        "disable_notifications" BOOLEAN         NOT NULL DEFAULT FALSE,
         "login_recovery_expiry"        TIMESTAMPTZ,
         "password_reset_secret"        TEXT     UNIQUE,
         "password_reset_secret_expiry" TIMESTAMPTZ,
@@ -186,7 +186,7 @@ COMMENT ON COLUMN "member"."notify_email_unconfirmed"   IS 'Unconfirmed email ad
 COMMENT ON COLUMN "member"."notify_email_secret"        IS 'Secret sent to the address in "notify_email_unconformed"';
 COMMENT ON COLUMN "member"."notify_email_secret_expiry" IS 'Expiry date/time for "notify_email_secret"';
 COMMENT ON COLUMN "member"."notify_email_lock_expiry"   IS 'Date/time until no further email confirmation mails may be sent (abuse protection)';
-COMMENT ON COLUMN "member"."notify_level"         IS 'Selects which event notifications are to be sent to the "notify_email" mail address, may be NULL if member did not make any selection yet';
+COMMENT ON COLUMN "member"."disable_notifications" IS 'TRUE if member does not want to receive notifications';
 COMMENT ON COLUMN "member"."login_recovery_expiry"        IS 'Date/time after which another login recovery attempt is allowed';
 COMMENT ON COLUMN "member"."password_reset_secret"        IS 'Secret string sent via e-mail for password recovery';
 COMMENT ON COLUMN "member"."password_reset_secret_expiry" IS 'Date/time until the password recovery secret is valid, and date/time after which another password recovery attempt is allowed';
@@ -907,6 +907,24 @@ COMMENT ON COLUMN "privilege"."member_manager"   IS 'Adding/removing members fro
 COMMENT ON COLUMN "privilege"."initiative_right" IS 'Right to create an initiative';
 COMMENT ON COLUMN "privilege"."voting_right"     IS 'Right to support initiatives, create and rate suggestions, and to vote';
 COMMENT ON COLUMN "privilege"."polling_right"    IS 'Right to create issues with policies having the "policy"."polling" flag set, and to add initiatives having the "initiative"."polling" flag set to those issues';
+
+
+CREATE TABLE "subscription" (
+        PRIMARY KEY ("unit_id", "member_id"),
+        "unit_id"               INT4            REFERENCES "unit" ("id") ON DELETE CASCADE ON UPDATE CASCADE,
+        "member_id"             INT4            REFERENCES "member" ("id") ON DELETE CASCADE ON UPDATE CASCADE );
+CREATE INDEX "subscription_member_id_idx" ON "subscription" ("member_id");
+
+COMMENT ON TABLE "subscription" IS 'An entry in this table denotes that the member wishes to receive notifications regardless of his/her privileges in the given unit';
+
+
+CREATE TABLE "ignored_area" (
+        PRIMARY KEY ("area_id", "member_id"),
+        "area_id"               INT4            REFERENCES "area" ("id") ON DELETE CASCADE ON UPDATE CASCADE,
+        "member_id"             INT4            REFERENCES "unit" ("id") ON DELETE CASCADE ON UPDATE CASCADE );
+CREATE INDEX "ignored_area_member_id_idx" ON "ignored_area" ("member_id");
+
+COMMENT ON TABLE "ignored_area" IS 'An entry in this table denotes that the member does not wish to receive notifications for the given subject area unless he/she declared interested in a particular issue';
 
 
 CREATE TABLE "membership" (
@@ -2350,79 +2368,6 @@ CREATE VIEW "event_seen_by_member" AS
   AND "ignored_initiative"."member_id" ISNULL;
 
 COMMENT ON VIEW "event_seen_by_member" IS 'Events as seen by a member, depending on its memberships, interests and support, but ignoring members "notify_level"';
-
-
-CREATE VIEW "selected_event_seen_by_member" AS
-  SELECT
-    "member"."id" AS "seen_by_member_id",
-    CASE WHEN "event"."state" IN (
-      'voting',
-      'finished_without_winner',
-      'finished_with_winner'
-    ) THEN
-      'voting'::"notify_level"
-    ELSE
-      CASE WHEN "event"."state" IN (
-        'verification',
-        'canceled_after_revocation_during_verification',
-        'canceled_no_initiative_admitted'
-      ) THEN
-        'verification'::"notify_level"
-      ELSE
-        CASE WHEN "event"."state" IN (
-          'discussion',
-          'canceled_after_revocation_during_discussion'
-        ) THEN
-          'discussion'::"notify_level"
-        ELSE
-          'all'::"notify_level"
-        END
-      END
-    END AS "notify_level",
-    "event".*
-  FROM "member" CROSS JOIN "event"
-  LEFT JOIN "issue"
-    ON "event"."issue_id" = "issue"."id"
-  LEFT JOIN "membership"
-    ON "member"."id" = "membership"."member_id"
-    AND "issue"."area_id" = "membership"."area_id"
-  LEFT JOIN "interest"
-    ON "member"."id" = "interest"."member_id"
-    AND "event"."issue_id" = "interest"."issue_id"
-  LEFT JOIN "ignored_member"
-    ON "member"."id" = "ignored_member"."member_id"
-    AND "event"."member_id" = "ignored_member"."other_member_id"
-  LEFT JOIN "ignored_initiative"
-    ON "member"."id" = "ignored_initiative"."member_id"
-    AND "event"."initiative_id" = "ignored_initiative"."initiative_id"
-  WHERE (
-    ( "member"."notify_level" >= 'all' ) OR
-    ( "member"."notify_level" >= 'voting' AND
-      "event"."state" IN (
-        'voting',
-        'finished_without_winner',
-        'finished_with_winner' ) ) OR
-    ( "member"."notify_level" >= 'verification' AND
-      "event"."state" IN (
-        'verification',
-        'canceled_after_revocation_during_verification',
-        'canceled_no_initiative_admitted' ) ) OR
-    ( "member"."notify_level" >= 'discussion' AND
-      "event"."state" IN (
-        'discussion',
-        'canceled_after_revocation_during_discussion' ) ) )
-  AND (
-    "interest"."member_id" NOTNULL OR
-    ( "membership"."member_id" NOTNULL AND
-      "event"."event" IN (
-        'issue_state_changed',
-        'initiative_created_in_new_issue',
-        'initiative_created_in_existing_issue',
-        'initiative_revoked' ) ) )
-  AND "ignored_member"."member_id" ISNULL
-  AND "ignored_initiative"."member_id" ISNULL;
-
-COMMENT ON VIEW "selected_event_seen_by_member" IS 'Events as seen by a member, depending on its memberships, interests, support and members "notify_level"';
 
 
 
