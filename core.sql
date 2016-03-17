@@ -219,7 +219,7 @@ COMMENT ON COLUMN "member_history"."until" IS 'Timestamp until the data was vali
 
 CREATE TABLE "rendered_member_statement" (
         PRIMARY KEY ("member_id", "format"),
-        "member_id"             INT8            REFERENCES "member" ("id") ON DELETE CASCADE ON UPDATE CASCADE,
+        "member_id"             INT4            REFERENCES "member" ("id") ON DELETE CASCADE ON UPDATE CASCADE,
         "format"                TEXT,
         "content"               TEXT            NOT NULL );
 
@@ -323,7 +323,7 @@ CREATE TABLE "session" (
         "ident"                 TEXT            PRIMARY KEY,
         "additional_secret"     TEXT,
         "expiry"                TIMESTAMPTZ     NOT NULL DEFAULT now() + '24 hours',
-        "member_id"             INT8            REFERENCES "member" ("id") ON DELETE SET NULL,
+        "member_id"             INT4            REFERENCES "member" ("id") ON DELETE SET NULL,
         "authority"             TEXT,
         "authority_uid"         TEXT,
         "authority_login"       TEXT,
