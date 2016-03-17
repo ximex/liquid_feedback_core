@@ -226,6 +226,16 @@ CREATE TABLE "rendered_member_statement" (
 COMMENT ON TABLE "rendered_member_statement" IS 'This table may be used by frontends to cache "rendered" member statements (e.g. HTML output generated from wiki text)';
 
 
+CREATE TABLE "subscription_time" (
+        "member_id"             INT4            REFERENCES "member" ("id") ON DELETE CASCADE ON UPDATE CASCADE,
+        "day_of_week"           INT2            CONSTRAINT "day_of_week_range" CHECK ("day_of_week" BETWEEN 0 AND 6),
+        "time_of_day"           TIME            NOT NULL );
+CREATE UNIQUE INDEX "subscription_time_all_days_of_week_time_of_day_idx" ON "subscription_time" ("time_of_day", "member_id") WHERE ("day_of_week" ISNULL);
+CREATE UNIQUE INDEX "subscription_time_day_of_week_time_of_day_idx" ON "subscription_time" ("day_of_week", "time_of_day", "member_id");
+
+COMMENT ON TABLE "subscription_time" IS 'Selects when a member receives digests on new user content in the system';
+
+
 CREATE TABLE "setting" (
         PRIMARY KEY ("member_id", "key"),
         "member_id"             INT4            REFERENCES "member" ("id") ON DELETE CASCADE ON UPDATE CASCADE,
@@ -1265,6 +1275,19 @@ CREATE UNIQUE INDEX "notification_sent_singleton_idx" ON "notification_sent" ((1
 
 COMMENT ON TABLE "notification_sent" IS 'This table stores one row with the last event_id, for which notifications have been sent out';
 COMMENT ON INDEX "notification_sent_singleton_idx" IS 'This index ensures that "notification_sent" only contains one row maximum.';
+
+
+CREATE TABLE "advertisement" (
+        PRIMARY KEY ("time_serial", "initiative_id", "member_id"),
+        "time_serial"           SERIAL8,
+        "initiative_id"         INT4            NOT NULL REFERENCES "initiative" ("id") ON DELETE CASCADE ON UPDATE CASCADE,
+        "member_id"             INT4            NOT NULL REFERENCES "member" ("id") ON DELETE CASCADE ON UPDATE CASCADE );
+CREATE INDEX "advertisement_initiative_id_idx" ON "advertisement" ("initiative_id");
+CREATE INDEX "advertisement_member_id_idx" ON "advertisement" ("member_id");
+
+COMMENT ON TABLE "advertisement" IS 'Stores which initiatives have been advertised to a member in a mail digest';
+
+COMMENT ON COLUMN "advertisement"."time_serial" IS 'An increasing integer that may be used to determine which issue or initiative was advertised the longest ago (may be equal or consecutive for those initiatives that are sent in the same notification)';
 
 
 
