@@ -1472,10 +1472,9 @@ CREATE FUNCTION "issue_requires_first_initiative_trigger"()
       IF NOT EXISTS (
         SELECT NULL FROM "initiative" WHERE "issue_id" = NEW."id"
       ) THEN
-        --RAISE 'Cannot create issue without an initial initiative.' USING
-        --  ERRCODE = 'integrity_constraint_violation',
-        --  HINT    = 'Create issue, initiative, and draft within the same transaction.';
-        RAISE EXCEPTION 'Cannot create issue without an initial initiative.';
+        RAISE EXCEPTION 'Cannot create issue without an initial initiative.' USING
+          ERRCODE = 'integrity_constraint_violation',
+          HINT    = 'Create issue, initiative, and draft within the same transaction.';
       END IF;
       RETURN NULL;
     END;
@@ -1528,10 +1527,9 @@ CREATE FUNCTION "initiative_requires_first_draft_trigger"()
       IF NOT EXISTS (
         SELECT NULL FROM "draft" WHERE "initiative_id" = NEW."id"
       ) THEN
-        --RAISE 'Cannot create initiative without an initial draft.' USING
-        --  ERRCODE = 'integrity_constraint_violation',
-        --  HINT    = 'Create issue, initiative and draft within the same transaction.';
-        RAISE EXCEPTION 'Cannot create initiative without an initial draft.';
+        RAISE EXCEPTION 'Cannot create initiative without an initial draft.' USING
+          ERRCODE = 'integrity_constraint_violation',
+          HINT    = 'Create issue, initiative and draft within the same transaction.';
       END IF;
       RETURN NULL;
     END;
@@ -1584,7 +1582,9 @@ CREATE FUNCTION "suggestion_requires_first_opinion_trigger"()
       IF NOT EXISTS (
         SELECT NULL FROM "opinion" WHERE "suggestion_id" = NEW."id"
       ) THEN
-        RAISE EXCEPTION 'Cannot create a suggestion without an opinion.';
+        RAISE EXCEPTION 'Cannot create a suggestion without an opinion.' USING
+          ERRCODE = 'integrity_constraint_violation',
+          HINT    = 'Create suggestion and opinion within the same transaction.';
       END IF;
       RETURN NULL;
     END;
@@ -1737,7 +1737,8 @@ CREATE FUNCTION "forbid_changes_on_closed_issue_trigger"()
             RETURN NULL;  -- allows changing of voter comment
           END IF;
         END IF;
-        RAISE EXCEPTION 'Tried to modify data after voting has been closed.';
+        RAISE EXCEPTION 'Tried to modify data after voting has been closed.' USING
+          ERRCODE = 'integrity_constraint_violation';
       END IF;
       RETURN NULL;
     END;
@@ -2848,7 +2849,8 @@ CREATE FUNCTION "require_transaction_isolation"()
         current_setting('transaction_isolation') NOT IN
         ('repeatable read', 'serializable')
       THEN
-        RAISE EXCEPTION 'Insufficient transaction isolation level';
+        RAISE EXCEPTION 'Insufficient transaction isolation level' USING
+          HINT = 'Consider using SET TRANSACTION ISOLATION LEVEL REPEATABLE READ.';
       END IF;
       RETURN;
     END;
