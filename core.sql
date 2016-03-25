@@ -363,7 +363,6 @@ CREATE TYPE "tie_breaking" AS ENUM ('simple', 'variant1', 'variant2');
 COMMENT ON TYPE "tie_breaking" IS 'Tie-breaker for the Schulze method: ''simple'' = only initiative ids are used, ''variant1'' = use initiative ids in variant 1 for tie breaking of the links (TBRL) and sequentially forbid shared links, ''variant2'' = use initiative ids in variant 2 for tie breaking of the links (TBRL) and sequentially forbid shared links';
 
 
-
 CREATE TABLE "policy" (
         "id"                    SERIAL4         PRIMARY KEY,
         "index"                 INT4            NOT NULL,
