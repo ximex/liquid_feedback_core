@@ -475,6 +475,15 @@ COMMENT ON COLUMN "unit"."external_reference" IS 'Opaque data field to store an 
 COMMENT ON COLUMN "unit"."member_count"       IS 'Count of members as determined by column "voting_right" in table "privilege"';
 
 
+CREATE TABLE "subscription" (
+        PRIMARY KEY ("member_id", "unit_id"),
+        "member_id"             INT4            REFERENCES "member" ("id") ON DELETE CASCADE ON UPDATE CASCADE,
+        "unit_id"               INT4            REFERENCES "unit" ("id") ON DELETE CASCADE ON UPDATE CASCADE );
+CREATE INDEX "subscription_unit_id_idx" ON "subscription" ("unit_id");
+
+COMMENT ON TABLE "subscription" IS 'An entry in this table denotes that the member wishes to receive notifications regardless of his/her privileges in the given unit';
+
+
 CREATE TABLE "unit_setting" (
         PRIMARY KEY ("member_id", "key", "unit_id"),
         "member_id"             INT4            REFERENCES "member" ("id") ON DELETE CASCADE ON UPDATE CASCADE,
@@ -510,6 +519,15 @@ COMMENT ON COLUMN "area"."active"              IS 'TRUE means new issues can be 
 COMMENT ON COLUMN "area"."external_reference"  IS 'Opaque data field to store an external reference';
 COMMENT ON COLUMN "area"."direct_member_count" IS 'Number of active members of that area (ignoring their weight), as calculated from view "area_member_count"';
 COMMENT ON COLUMN "area"."member_weight"       IS 'Same as "direct_member_count" but respecting delegations';
+
+
+CREATE TABLE "ignored_area" (
+        PRIMARY KEY ("member_id", "area_id"),
+        "member_id"             INT4            REFERENCES "unit" ("id") ON DELETE CASCADE ON UPDATE CASCADE,
+        "area_id"               INT4            REFERENCES "area" ("id") ON DELETE CASCADE ON UPDATE CASCADE );
+CREATE INDEX "ignored_area_area_id_idx" ON "ignored_area" ("area_id");
+
+COMMENT ON TABLE "ignored_area" IS 'An entry in this table denotes that the member does not wish to receive notifications for the given subject area unless he/she declared interested in a particular issue';
 
 
 CREATE TABLE "area_setting" (
@@ -778,10 +796,10 @@ COMMENT ON TABLE "battle" IS 'Number of members preferring one initiative to ano
 
 
 CREATE TABLE "ignored_initiative" (
-        PRIMARY KEY ("initiative_id", "member_id"),
-        "initiative_id"         INT4            REFERENCES "initiative" ("id") ON DELETE CASCADE ON UPDATE CASCADE,
-        "member_id"             INT4            REFERENCES "member" ("id") ON DELETE CASCADE ON UPDATE CASCADE );
-CREATE INDEX "ignored_initiative_member_id_idx" ON "ignored_initiative" ("member_id");
+        PRIMARY KEY ("member_id", "initiative_id"),
+        "member_id"             INT4            REFERENCES "member" ("id") ON DELETE CASCADE ON UPDATE CASCADE,
+        "initiative_id"         INT4            REFERENCES "initiative" ("id") ON DELETE CASCADE ON UPDATE CASCADE );
+CREATE INDEX "ignored_initiative_initiative_id_idx" ON "ignored_initiative" ("initiative_id");
 
 COMMENT ON TABLE "ignored_initiative" IS 'Possibility to filter initiatives';
 
@@ -916,24 +934,6 @@ COMMENT ON COLUMN "privilege"."member_manager"   IS 'Adding/removing members fro
 COMMENT ON COLUMN "privilege"."initiative_right" IS 'Right to create an initiative';
 COMMENT ON COLUMN "privilege"."voting_right"     IS 'Right to support initiatives, create and rate suggestions, and to vote';
 COMMENT ON COLUMN "privilege"."polling_right"    IS 'Right to create issues with policies having the "policy"."polling" flag set, and to add initiatives having the "initiative"."polling" flag set to those issues';
-
-
-CREATE TABLE "subscription" (
-        PRIMARY KEY ("unit_id", "member_id"),
-        "unit_id"               INT4            REFERENCES "unit" ("id") ON DELETE CASCADE ON UPDATE CASCADE,
-        "member_id"             INT4            REFERENCES "member" ("id") ON DELETE CASCADE ON UPDATE CASCADE );
-CREATE INDEX "subscription_member_id_idx" ON "subscription" ("member_id");
-
-COMMENT ON TABLE "subscription" IS 'An entry in this table denotes that the member wishes to receive notifications regardless of his/her privileges in the given unit';
-
-
-CREATE TABLE "ignored_area" (
-        PRIMARY KEY ("area_id", "member_id"),
-        "area_id"               INT4            REFERENCES "area" ("id") ON DELETE CASCADE ON UPDATE CASCADE,
-        "member_id"             INT4            REFERENCES "unit" ("id") ON DELETE CASCADE ON UPDATE CASCADE );
-CREATE INDEX "ignored_area_member_id_idx" ON "ignored_area" ("member_id");
-
-COMMENT ON TABLE "ignored_area" IS 'An entry in this table denotes that the member does not wish to receive notifications for the given subject area unless he/she declared interested in a particular issue';
 
 
 CREATE TABLE "membership" (
