@@ -1276,17 +1276,17 @@ COMMENT ON TABLE "notification_sent" IS 'This table stores one row with the last
 COMMENT ON INDEX "notification_sent_singleton_idx" IS 'This index ensures that "notification_sent" only contains one row maximum.';
 
 
-CREATE TABLE "advertisement" (  -- TODO: two tables: one for initiatives, one for suggestions
+CREATE TABLE "advertised_initiative" (  -- TODO: two tables: one for initiatives, one for suggestions
         PRIMARY KEY ("time_serial", "initiative_id", "member_id"),
         "time_serial"           SERIAL8,
         "initiative_id"         INT4            NOT NULL REFERENCES "initiative" ("id") ON DELETE CASCADE ON UPDATE CASCADE,
         "member_id"             INT4            NOT NULL REFERENCES "member" ("id") ON DELETE CASCADE ON UPDATE CASCADE );
-CREATE INDEX "advertisement_initiative_id_idx" ON "advertisement" ("initiative_id");
-CREATE INDEX "advertisement_member_id_idx" ON "advertisement" ("member_id");
+CREATE INDEX "advertised_initiative_initiative_id_idx" ON "advertised_initiative" ("initiative_id");
+CREATE INDEX "advertised_initiative_member_id_idx" ON "advertised_initiative" ("member_id");
 
-COMMENT ON TABLE "advertisement" IS 'Stores which initiatives have been advertised to a member in a mail digest';
+COMMENT ON TABLE "advertised_initiative" IS 'Stores which initiatives have been advertised to a member in a mail digest';
 
-COMMENT ON COLUMN "advertisement"."time_serial" IS 'An increasing integer that may be used to determine which issue or initiative was advertised the longest ago (may be equal or consecutive for those initiatives that are sent in the same notification)';
+COMMENT ON COLUMN "advertised_initiative"."time_serial" IS 'An increasing integer that may be used to determine which issue or initiative was advertised the longest ago (may be equal or consecutive for those initiatives that are sent in the same notification)';
 
 
 
@@ -2393,7 +2393,7 @@ CREATE VIEW "event_seen_by_member" AS
 COMMENT ON VIEW "event_seen_by_member" IS 'Events as seen by a member, depending on its memberships, interests and support, but ignoring members "notify_level"';
 
 
-CREATE VIEW "issue_for_notification" AS
+CREATE VIEW "relevant_issue_for_notification" AS
   SELECT
     "member"."id" AS "member_id",
     "issue"."id" AS "issue_id"
@@ -2417,7 +2417,67 @@ CREATE VIEW "issue_for_notification" AS
     ( ( "issue"."state" IN ('admission', 'discussion', 'verification') AND
         "interest"."member_id" NOTNULL ) OR
       ( "issue"."state" IN ('discussion', 'verification') AND
-        "ignored_area"."member_id" ISNULL ) );  -- TODO: add certain issues in admission phase
+        "ignored_area"."member_id" ISNULL ) );
+
+COMMENT ON VIEW "relevant_issue_for_notification" IS 'Helper view for "issue_for_notification" containing issues which are relevant to the member';
+
+
+CREATE VIEW "new_issue_for_notification" AS
+  SELECT DISTINCT ON ("member_id", "area_id")
+    "member"."id"     AS "member_id",
+    "issue"."area_id" AS "area_id",
+    "issue"."id"      AS "issue_id"
+  FROM "member" CROSS JOIN "issue"
+  JOIN "area" ON "area"."id" = "issue"."area_id"
+  LEFT JOIN "privilege"
+    ON "privilege"."member_id" = "member"."id"
+    AND "privilege"."unit_id" = "area"."unit_id"
+  LEFT JOIN "subscription"
+    ON "subscription"."member_id" = "member"."id"
+    AND "subscription"."unit_id" = "area"."unit_id"
+  LEFT JOIN "interest"
+    ON "interest"."member_id" = "member"."id"
+    AND "interest"."issue_id" = "issue"."id"
+  LEFT JOIN "ignored_area"
+    ON "ignored_area"."member_id" = "member"."id"
+    AND "ignored_area"."area_id" = "issue"."area_id"
+  LEFT JOIN
+    ( "advertised_initiative" JOIN "initiative"
+      ON "advertised_initiative"."initiative_id" = "initiative"."id" )
+    ON "advertised_initiative"."member_id" = "member"."id"
+    AND "initiative"."issue_id" = "issue"."id"
+  JOIN "issue_order_in_admission_state"
+    ON "issue_order_in_admission_state"."id" = "issue"."id"
+  WHERE
+    ( "privilege"."initiative_right" OR "privilege"."voting_right" OR
+      "subscription"."member_id" NOTNULL ) AND
+    "issue"."state" IN ('admission') AND
+    "interest"."member_id" ISNULL AND
+    "advertised_initiative"."member_id" ISNULL
+  ORDER BY
+    "member_id",
+    "area_id",
+    "issue_order_in_admission_state"."order_in_area";
+
+COMMENT ON VIEW "new_issue_for_notification" IS 'Helper view for "issue_for_notification" containing one not-yet-advertised issue per "area" which is in ''admission'' phase and has the best proportional ranking';
+
+
+CREATE VIEW "new_updated_issue_for_notification" AS
+  SELECT
+    "member"."id" AS "member_id",
+    "issue"."id" AS "issue_id"
+  FROM "member" CROSS JOIN "issue"
+  WHERE FALSE;  -- TODO
+
+COMMENT ON VIEW "new_updated_issue_for_notification" IS 'TODO';
+
+
+CREATE VIEW "issue_for_notification" AS
+  SELECT "member_id", "issue_id" FROM "relevant_issue_for_notification"
+  UNION
+  SELECT "member_id", "issue_id" FROM "new_issue_for_notification"
+  UNION
+  SELECT "member_id", "issue_id" FROM "new_updated_issue_for_notification";
 
 COMMENT ON VIEW "issue_for_notification" IS 'Issues that are considered in notifications sent to the member';
 
