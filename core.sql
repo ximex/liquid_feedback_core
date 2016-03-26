@@ -2393,7 +2393,7 @@ CREATE VIEW "event_seen_by_member" AS
 COMMENT ON VIEW "event_seen_by_member" IS 'Events as seen by a member, depending on its memberships, interests and support, but ignoring members "notify_level"';
 
 
-CREATE VIEW "issues_for_notification" AS
+CREATE VIEW "issue_for_notification" AS
   SELECT
     "member"."id" AS "member_id",
     "issue"."id" AS "issue_id"
@@ -2405,11 +2405,21 @@ CREATE VIEW "issues_for_notification" AS
   LEFT JOIN "subscription"
     ON "subscription"."member_id" = "member"."id"
     AND "subscription"."unit_id" = "area"."unit_id"
+  LEFT JOIN "interest"
+    ON "interest"."member_id" = "member"."id"
+    AND "interest"."issue_id" = "issue"."id"
+  LEFT JOIN "ignored_area"
+    ON "ignored_area"."member_id" = "member"."id"
+    AND "ignored_area"."area_id" = "issue"."area_id"
   WHERE
     ( "privilege"."initiative_right" OR "privilege"."voting_right" OR
-      "subscription"."member_id" NOTNULL );  -- TODO: add further conditions
+      "subscription"."member_id" NOTNULL ) AND
+    ( ( "issue"."state" IN ('admission', 'discussion', 'verification') AND
+        "interest"."member_id" NOTNULL ) OR
+      ( "issue"."state" IN ('discussion', 'verification') AND
+        "ignored_area"."member_id" ISNULL ) );  -- TODO: add certain issues in admission phase
 
-COMMENT ON VIEW "issues_for_notification" IS 'Issues that are considered in notifications sent to the member';
+COMMENT ON VIEW "issue_for_notification" IS 'Issues that are considered in notifications sent to the member';
 
 
 
