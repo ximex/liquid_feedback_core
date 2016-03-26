@@ -1276,17 +1276,25 @@ COMMENT ON TABLE "notification_sent" IS 'This table stores one row with the last
 COMMENT ON INDEX "notification_sent_singleton_idx" IS 'This index ensures that "notification_sent" only contains one row maximum.';
 
 
-CREATE TABLE "advertised_initiative" (  -- TODO: two tables: one for initiatives, one for suggestions
-        PRIMARY KEY ("time_serial", "initiative_id", "member_id"),
-        "time_serial"           SERIAL8,
+CREATE TABLE "advertised_initiative" (
+        PRIMARY KEY ("member_id", "initiative_id", "time_serial"),
+        "member_id"             INT4            NOT NULL REFERENCES "member" ("id") ON DELETE CASCADE ON UPDATE CASCADE,
         "initiative_id"         INT4            NOT NULL REFERENCES "initiative" ("id") ON DELETE CASCADE ON UPDATE CASCADE,
-        "member_id"             INT4            NOT NULL REFERENCES "member" ("id") ON DELETE CASCADE ON UPDATE CASCADE );
+        "time_serial"           SERIAL8 );
 CREATE INDEX "advertised_initiative_initiative_id_idx" ON "advertised_initiative" ("initiative_id");
-CREATE INDEX "advertised_initiative_member_id_idx" ON "advertised_initiative" ("member_id");
 
 COMMENT ON TABLE "advertised_initiative" IS 'Stores which initiatives have been advertised to a member in a mail digest';
 
 COMMENT ON COLUMN "advertised_initiative"."time_serial" IS 'An increasing integer that may be used to determine which issue or initiative was advertised the longest ago (may be equal or consecutive for those initiatives that are sent in the same notification)';
+
+
+CREATE TABLE "advertised_suggestion" (
+        PRIMARY KEY ("member_id", "suggestion_id"),
+        "member_id"             INT4            NOT NULL REFERENCES "member" ("id") ON DELETE CASCADE ON UPDATE CASCADE,
+        "suggestion_id"         INT4            NOT NULL REFERENCES "suggestion" ("id") ON DELETE CASCADE ON UPDATE CASCADE );
+CREATE INDEX "advertised_suggestion_suggestion_id_idx" ON "advertised_suggestion" ("suggestion_id");
+
+COMMENT ON TABLE "advertised_initiative" IS 'Stores which suggestions have been advertised to a member in a mail digest';
 
 
 
@@ -2463,13 +2471,46 @@ COMMENT ON VIEW "new_issue_for_notification" IS 'Helper view for "issue_for_noti
 
 
 CREATE VIEW "new_updated_issue_for_notification" AS
-  SELECT
-    "member"."id" AS "member_id",
-    "issue"."id" AS "issue_id"
-  FROM "member" CROSS JOIN "issue"
-  WHERE FALSE;  -- TODO
+  SELECT DISTINCT ON ("member_id", "area_id") * FROM (
+    SELECT DISTINCT ON ("member_id", "area_id", "issue_id")
+      "member"."id"                         AS "member_id",
+      "issue"."area_id"                     AS "area_id",
+      "issue"."id"                          AS "issue_id",
+      "advertised_initiative"."time_serial" AS "time_serial"
+    FROM "member" CROSS JOIN "issue"
+    JOIN "area" ON "area"."id" = "issue"."area_id"
+    LEFT JOIN "privilege"
+      ON "privilege"."member_id" = "member"."id"
+      AND "privilege"."unit_id" = "area"."unit_id"
+    LEFT JOIN "subscription"
+      ON "subscription"."member_id" = "member"."id"
+      AND "subscription"."unit_id" = "area"."unit_id"
+    LEFT JOIN "interest"
+      ON "interest"."member_id" = "member"."id"
+      AND "interest"."issue_id" = "issue"."id"
+    LEFT JOIN "ignored_area"
+      ON "ignored_area"."member_id" = "member"."id"
+      AND "ignored_area"."area_id" = "issue"."area_id"
+    LEFT JOIN
+      ( "advertised_initiative" JOIN "initiative"
+        ON "advertised_initiative"."initiative_id" = "initiative"."id" )
+      ON "advertised_initiative"."member_id" = "member"."id"
+      AND "initiative"."issue_id" = "issue"."id"
+    WHERE
+      ( "privilege"."initiative_right" OR "privilege"."voting_right" OR
+        "subscription"."member_id" NOTNULL ) AND
+      "issue"."state" IN ('admission') AND
+      "interest"."member_id" ISNULL AND
+      "advertised_initiative"."member_id" ISNULL
+    ORDER BY
+      "member_id",
+      "area_id",
+      "issue_id",
+      "time_serial" DESC
+  ) AS "subquery"
+  ORDER BY "member_id", "area_id", "time_serial" ASC;  -- TODO: require new initiatives or new initiative draft since last digest
 
-COMMENT ON VIEW "new_updated_issue_for_notification" IS 'TODO';
+COMMENT ON VIEW "new_updated_issue_for_notification" IS 'Helper view for "issue_for_notification" containing one previously advertised issue per "area" which is in ''admission'' phase and has new or updated initiatives for the recipient';
 
 
 CREATE VIEW "issue_for_notification" AS
