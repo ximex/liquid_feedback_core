@@ -2159,7 +2159,7 @@ COMMENT ON VIEW "critical_opinion" IS 'Opinions currently causing dissatisfactio
 
 
 CREATE VIEW "issue_supporter_in_admission_state" AS
-  SELECT DISTINCT
+  SELECT DISTINCT  -- TODO: DISTINCT needed?
     "area"."unit_id",
     "issue"."area_id",
     "issue"."id" AS "issue_id",
