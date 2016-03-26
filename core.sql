@@ -1276,7 +1276,7 @@ COMMENT ON TABLE "notification_sent" IS 'This table stores one row with the last
 COMMENT ON INDEX "notification_sent_singleton_idx" IS 'This index ensures that "notification_sent" only contains one row maximum.';
 
 
-CREATE TABLE "advertisement" (
+CREATE TABLE "advertisement" (  -- TODO: two tables: one for initiatives, one for suggestions
         PRIMARY KEY ("time_serial", "initiative_id", "member_id"),
         "time_serial"           SERIAL8,
         "initiative_id"         INT4            NOT NULL REFERENCES "initiative" ("id") ON DELETE CASCADE ON UPDATE CASCADE,
@@ -2391,6 +2391,25 @@ CREATE VIEW "event_seen_by_member" AS
   AND "ignored_initiative"."member_id" ISNULL;
 
 COMMENT ON VIEW "event_seen_by_member" IS 'Events as seen by a member, depending on its memberships, interests and support, but ignoring members "notify_level"';
+
+
+CREATE VIEW "issues_for_notification" AS
+  SELECT
+    "member"."id" AS "member_id",
+    "issue"."id" AS "issue_id"
+  FROM "member" CROSS JOIN "issue"
+  JOIN "area" ON "area"."id" = "issue"."area_id"
+  LEFT JOIN "privilege"
+    ON "privilege"."member_id" = "member"."id"
+    AND "privilege"."unit_id" = "area"."unit_id"
+  LEFT JOIN "subscription"
+    ON "subscription"."member_id" = "member"."id"
+    AND "subscription"."unit_id" = "area"."unit_id"
+  WHERE
+    ( "privilege"."initiative_right" OR "privilege"."voting_right" OR
+      "subscription"."member_id" NOTNULL );  -- TODO: add further conditions
+
+COMMENT ON VIEW "issues_for_notification" IS 'Issues that are considered in notifications sent to the member';
 
 
 
