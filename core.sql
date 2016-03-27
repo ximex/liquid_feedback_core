@@ -2491,7 +2491,7 @@ CREATE VIEW "new_updated_issue_for_notification" AS
     LEFT JOIN "ignored_area"
       ON "ignored_area"."member_id" = "member"."id"
       AND "ignored_area"."area_id" = "issue"."area_id"
-    LEFT JOIN
+    JOIN
       ( "advertised_initiative" JOIN "initiative"
         ON "advertised_initiative"."initiative_id" = "initiative"."id" )
       ON "advertised_initiative"."member_id" = "member"."id"
@@ -2501,7 +2501,6 @@ CREATE VIEW "new_updated_issue_for_notification" AS
         "subscription"."member_id" NOTNULL ) AND
       "issue"."state" IN ('admission') AND
       "interest"."member_id" ISNULL AND
-      "advertised_initiative"."member_id" ISNULL
     ORDER BY
       "member_id",
       "area_id",
