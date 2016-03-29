@@ -120,6 +120,7 @@ CREATE TABLE "member" (
         "notify_email_secret_expiry"   TIMESTAMPTZ,
         "notify_email_lock_expiry"     TIMESTAMPTZ,
         "disable_notifications" BOOLEAN         NOT NULL DEFAULT FALSE,
+        "last_notified_suggestion_id" INT8,
         "login_recovery_expiry"        TIMESTAMPTZ,
         "password_reset_secret"        TEXT     UNIQUE,
         "password_reset_secret_expiry" TIMESTAMPTZ,
@@ -2378,6 +2379,32 @@ CREATE VIEW "event_seen_by_member" AS
   AND "ignored_initiative"."member_id" ISNULL;
 
 COMMENT ON VIEW "event_seen_by_member" IS 'Events as seen by a member, depending on its memberships, interests and support, but ignoring members "notify_level"';
+
+
+CREATE VIEW "updated_initiative" AS
+  SELECT
+    "member"."id" AS "seen_by_member_id",
+    "initiative".*
+  FROM "member" CROSS JOIN "initiative"
+  JOIN "issue" ON "issue"."id" = "initiative"."issue_id"
+  JOIN "supporter" ON
+    "supporter"."member_id" = "member"."id" AND
+    "supporter"."initiative_id" = "initiative"."id"
+  WHERE "issue"."half_frozen" ISNULL AND "issue"."closed" ISNULL
+  AND (
+    EXISTS (
+      SELECT NULL FROM "draft"
+      WHERE "draft"."initiative_id" = "initiative"."id"
+      AND "draft"."id" > "supporter"."draft_id"
+    ) OR EXISTS (
+      SELECT NULL FROM "suggestion"
+      WHERE "suggestion"."initiative_id" = "initiative"."id"
+      AND COALESCE(
+        "suggestion"."id" > "member"."last_notified_suggestion_id",
+        TRUE
+      )
+    )
+  );
 
 
 
