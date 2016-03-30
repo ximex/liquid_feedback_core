@@ -2440,8 +2440,8 @@ CREATE FUNCTION "featured_initiative"
           ) AS "subquery"
           ORDER BY "seed"
         LOOP
-          FOR "result_row" IN
-            SELECT "initiative".* FROM "initiative"
+          SELECT "initiative".* INTO "result_row"
+            FROM "initiative"
             JOIN "issue" ON "issue"."id" = "initiative"."issue_id"
             JOIN "supporter" ON "supporter"."initiative_id" = "initiative"."id"
             LEFT JOIN "supporter" AS "self_support" ON
@@ -2451,19 +2451,17 @@ CREATE FUNCTION "featured_initiative"
             AND "issue"."area_id" = "area_id_p"
             AND "issue"."state" IN ('admission', 'discussion', 'verification')
             AND "self_support"."member_id" ISNULL
+            AND NOT "initiative_id_ary" @> ARRAY["initiative"."id"]
             ORDER BY md5("seed_v" || '-' || "initiative"."id")
-          LOOP
-            IF NOT "initiative_id_ary" @> ARRAY["result_row"."id"] THEN
-              "match_v" := TRUE;
-              "initiative_id_ary" := "initiative_id_ary" || "result_row"."id";
-              RETURN NEXT "result_row";
-              IF array_length("initiative_id_ary", 1) >= "sample_size_v" THEN
-                RETURN;
-              ELSE
-                EXIT;
-              END IF;
+            LIMIT 1;
+          IF FOUND THEN
+            "match_v" := TRUE;
+            "initiative_id_ary" := "initiative_id_ary" || "result_row"."id";
+            RETURN NEXT "result_row";
+            IF array_length("initiative_id_ary", 1) >= "sample_size_v" THEN
+              RETURN;
             END IF;
-          END LOOP;
+          END IF;
         END LOOP;
         EXIT WHEN NOT "match_v";
       END LOOP;
