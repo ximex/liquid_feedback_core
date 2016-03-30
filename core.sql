@@ -120,6 +120,8 @@ CREATE TABLE "member" (
         "notify_email_secret_expiry"   TIMESTAMPTZ,
         "notify_email_lock_expiry"     TIMESTAMPTZ,
         "disable_notifications" BOOLEAN         NOT NULL DEFAULT FALSE,
+        "notification_counter"  INT4            NOT NULL DEFAULT 0,
+        "sample_size"           INT4            NOT NULL DEFAULT 3,
         "last_notified_suggestion_id" INT8,
         "login_recovery_expiry"        TIMESTAMPTZ,
         "password_reset_secret"        TEXT     UNIQUE,
@@ -2390,7 +2392,7 @@ CREATE VIEW "updated_initiative" AS
   JOIN "supporter" ON
     "supporter"."member_id" = "member"."id" AND
     "supporter"."initiative_id" = "initiative"."id"
-  WHERE "issue"."half_frozen" ISNULL AND "issue"."closed" ISNULL
+  WHERE "issue"."state" IN ('admission', 'discussion') ISNULL
   AND (
     EXISTS (
       SELECT NULL FROM "draft"
@@ -2405,6 +2407,93 @@ CREATE VIEW "updated_initiative" AS
       )
     )
   );
+
+CREATE FUNCTION "featured_initiative"
+  ( "member_id_p" "member"."id"%TYPE,
+    "area_id_p"   "area"."id"%TYPE )
+  RETURNS SETOF "initiative"
+  LANGUAGE 'plpgsql' STABLE AS $$
+    DECLARE
+      "sample_size_v"     INT4;
+      "member_id_v"       "member"."id"%TYPE;
+      "seed_v"            TEXT;
+      "result_row"        "initiative"%ROWTYPE;
+      "match_v"           BOOLEAN;
+      "initiative_id_ary" INT4[];  --"initiative"."id"%TYPE[]
+    BEGIN
+      SELECT INTO "sample_size_v" "sample_size" FROM "member" WHERE "id" = "member_id_p";
+      "initiative_id_ary" := '{}';
+      LOOP
+        "match_v" := FALSE;
+        FOR "member_id_v", "seed_v" IN
+          SELECT * FROM (
+            SELECT DISTINCT
+              "supporter"."member_id",
+              md5("member_id" || '-' || "member"."notification_counter" || '-' || "area_id_p") AS "seed"
+            FROM "supporter"
+            JOIN "member" ON "member"."id" = "supporter"."member_id"
+            JOIN "initiative" ON "initiative"."id" = "supporter"."initiative_id"
+            JOIN "issue" ON "issue"."id" = "initiative"."issue_id"
+            WHERE "supporter"."member_id" != "member_id_p"
+            AND "issue"."area_id" = "area_id_p"
+            AND "issue"."state" IN ('admission', 'discussion', 'verification')
+          ) AS "subquery"
+          ORDER BY "seed"
+        LOOP
+          FOR "result_row" IN
+            SELECT "initiative".* FROM "initiative"
+            JOIN "issue" ON "issue"."id" = "initiative"."issue_id"
+            JOIN "supporter" ON "supporter"."initiative_id" = "initiative"."id"
+            LEFT JOIN "supporter" AS "self_support" ON
+              "self_support"."initiative_id" = "initiative"."id" AND
+              "self_support"."member_id" = "member_id_p"
+            WHERE "supporter"."member_id" = "member_id_v"
+            AND "issue"."area_id" = "area_id_p"
+            AND "issue"."state" IN ('admission', 'discussion', 'verification')
+            AND "self_support"."member_id" ISNULL
+            ORDER BY md5("seed_v" || '-' || "initiative"."id")
+          LOOP
+            IF NOT "initiative_id_ary" @> ARRAY["result_row"."id"] THEN
+              "match_v" := TRUE;
+              "initiative_id_ary" := "initiative_id_ary" || "result_row"."id";
+              RETURN NEXT "result_row";
+              IF array_length("initiative_id_ary", 1) >= "sample_size_v" THEN
+                RETURN;
+              END IF;
+            END IF;
+          END LOOP;
+        END LOOP;
+        EXIT WHEN NOT "match_v";
+      END LOOP;
+      RETURN;
+    END;
+  $$;
+
+CREATE VIEW "updated_or_featured_initiative" AS
+  SELECT * FROM "updated_initiative"
+  UNION ALL
+  SELECT
+    "member"."id" AS "seen_by_member_id",
+    "featured_initiative".*
+  FROM "member" CROSS JOIN "area"
+  CROSS JOIN LATERAL "featured_initiative"("member"."id", "area"."id");
+
+CREATE VIEW "leading_complement_initiative" AS
+  SELECT DISTINCT ON ("seen_by_member_id", "initiative"."issue_id")
+    "updated_or_featured_initiative"."seen_by_member_id",
+    "initiative".*
+  FROM "updated_or_featured_initiative"
+  JOIN "initiative"
+  ON "updated_or_featured_initiative"."issue_id" = "initiative"."issue_id"
+  ORDER BY
+    "seen_by_member_id",
+    "initiative"."issue_id",
+    "initiative"."harmonic_weight" DESC;
+
+CREATE VIEW "initiative_for_notification" AS
+  SELECT * FROM "updated_or_featured_initiative"
+  UNION
+  SELECT * FROM "leading_complement_initiative";
 
 
 
