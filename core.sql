@@ -2386,6 +2386,26 @@ COMMENT ON VIEW "event_seen_by_member" IS 'Events as seen by a member, depending
 CREATE VIEW "updated_initiative" AS
   SELECT
     "member"."id" AS "seen_by_member_id",
+    TRUE AS "supported",
+    EXISTS (
+      SELECT NULL FROM "draft"
+      WHERE "draft"."initiative_id" = "initiative"."id"
+      AND "draft"."id" > "supporter"."draft_id"
+    ) AS "new_draft",
+    ( SELECT count(1) FROM "suggestion"
+      WHERE "suggestion"."initiative_id" = "initiative"."id"
+      AND COALESCE(
+        "suggestion"."id" > "member"."last_notified_suggestion_id",
+        TRUE
+      )
+    ) AS "new_suggestion_count",
+    FALSE AS "featured",
+    NOT EXISTS (
+      SELECT NULL FROM "initiative" AS "better_initiative"
+      WHERE
+        ("better_initiative"."harmonic_weight", -"better_initiative"."id") >
+        ("initiative"."harmonic_weight", -"better_initiative"."id")
+    ) AS "leading",
     "initiative".*
   FROM "member" CROSS JOIN "initiative"
   JOIN "issue" ON "issue"."id" = "initiative"."issue_id"
@@ -2474,25 +2494,49 @@ CREATE VIEW "updated_or_featured_initiative" AS
   UNION ALL
   SELECT
     "member"."id" AS "seen_by_member_id",
-    "featured_initiative".*
+    FALSE AS "supported",
+    NULL::BOOLEAN AS "new_draft",
+    NULL::INTEGER AS "new_suggestion_count",
+    TRUE AS "featured",
+    NOT EXISTS (
+      SELECT NULL FROM "initiative" AS "better_initiative"
+      WHERE
+        ("better_initiative"."harmonic_weight", -"better_initiative"."id") >
+        ("initiative"."harmonic_weight", -"better_initiative"."id")
+    ) AS "leading",
+    "initiative".*
   FROM "member" CROSS JOIN "area"
-  CROSS JOIN LATERAL "featured_initiative"("member"."id", "area"."id");
+  CROSS JOIN LATERAL
+    "featured_initiative"("member"."id", "area"."id") AS "initiative";
 
 CREATE VIEW "leading_complement_initiative" AS
-  SELECT DISTINCT ON ("seen_by_member_id", "initiative"."issue_id")
-    "updated_or_featured_initiative"."seen_by_member_id",
-    "initiative".*
-  FROM "updated_or_featured_initiative"
-  JOIN "initiative"
-  ON "updated_or_featured_initiative"."issue_id" = "initiative"."issue_id"
-  ORDER BY
-    "seen_by_member_id",
-    "initiative"."issue_id",
-    "initiative"."harmonic_weight" DESC;
+  SELECT * FROM (
+    SELECT DISTINCT ON ("seen_by_member_id", "initiative"."issue_id")
+      "updated_or_featured_initiative"."seen_by_member_id",
+      FALSE AS "supported",
+      NULL::BOOLEAN AS "new_draft",
+      NULL::INTEGER AS "new_suggestion_count",
+      FALSE AS "featured",
+      TRUE AS "leading",
+      "initiative".*
+    FROM "updated_or_featured_initiative"
+    JOIN "initiative"
+    ON "updated_or_featured_initiative"."issue_id" = "initiative"."issue_id"
+    ORDER BY
+      "seen_by_member_id",
+      "initiative"."issue_id",
+      "initiative"."harmonic_weight" DESC,
+      "initiative"."id"
+  ) AS "subquery"
+  WHERE NOT EXISTS (
+    SELECT NULL FROM "updated_or_featured_initiative" AS "other"
+    WHERE "other"."seen_by_member_id" = "subquery"."seen_by_member_id"
+    AND "other"."id" = "subquery"."id"
+  );
 
 CREATE VIEW "initiative_for_notification" AS
   SELECT * FROM "updated_or_featured_initiative"
-  UNION
+  UNION ALL
   SELECT * FROM "leading_complement_initiative";
 
 
