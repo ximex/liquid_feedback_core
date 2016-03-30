@@ -2459,6 +2459,8 @@ CREATE FUNCTION "featured_initiative"
               RETURN NEXT "result_row";
               IF array_length("initiative_id_ary", 1) >= "sample_size_v" THEN
                 RETURN;
+              ELSE
+                EXIT;
               END IF;
             END IF;
           END LOOP;
