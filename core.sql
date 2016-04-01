@@ -2408,7 +2408,7 @@ CREATE VIEW "updated_initiative" AS
         ( COALESCE("better_initiative"."harmonic_weight", -1),
           -"better_initiative"."id" ) >
         ( COALESCE("initiative"."harmonic_weight", -1),
-          -"better_initiative"."id" )
+          -"initiative"."id" )
     ) AS "leading",
     "initiative".*
   FROM "member" CROSS JOIN "initiative"
@@ -2510,7 +2510,7 @@ CREATE VIEW "updated_or_featured_initiative" AS
         ( COALESCE("better_initiative"."harmonic_weight", -1),
           -"better_initiative"."id" ) >
         ( COALESCE("initiative"."harmonic_weight", -1),
-          -"better_initiative"."id" )
+          -"initiative"."id" )
     ) AS "leading",
     "initiative".*
   FROM "member" CROSS JOIN "area"
