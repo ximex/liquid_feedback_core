@@ -46,9 +46,12 @@ CREATE VIEW "updated_initiative" AS
     NOT EXISTS (
       SELECT NULL FROM "initiative" AS "better_initiative"
       WHERE
-        "better_initiative"."issue_id" = "initiative"."issue_id" AND
-        ("better_initiative"."harmonic_weight", -"better_initiative"."id") >
-        ("initiative"."harmonic_weight", -"better_initiative"."id")
+        "better_initiative"."issue_id" = "initiative"."issue_id"
+      AND
+        ( COALESCE("better_initiative"."harmonic_weight", -1),
+          -"better_initiative"."id" ) >
+        ( COALESCE("initiative"."harmonic_weight", -1),
+          -"better_initiative"."id" )
     ) AS "leading",
     "initiative".*
   FROM "member" CROSS JOIN "initiative"
@@ -145,9 +148,12 @@ CREATE VIEW "updated_or_featured_initiative" AS
     NOT EXISTS (
       SELECT NULL FROM "initiative" AS "better_initiative"
       WHERE
-        "better_initiative"."issue_id" = "initiative"."issue_id" AND
-        ("better_initiative"."harmonic_weight", -"better_initiative"."id") >
-        ("initiative"."harmonic_weight", -"better_initiative"."id")
+        "better_initiative"."issue_id" = "initiative"."issue_id"
+      AND
+        ( COALESCE("better_initiative"."harmonic_weight", -1),
+          -"better_initiative"."id" ) >
+        ( COALESCE("initiative"."harmonic_weight", -1),
+          -"better_initiative"."id" )
     ) AS "leading",
     "initiative".*
   FROM "member" CROSS JOIN "area"
