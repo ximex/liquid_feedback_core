@@ -29,62 +29,6 @@ DROP VIEW "selected_event_seen_by_member";
 CREATE VIEW "updated_initiative" AS
   SELECT
     "member"."id" AS "seen_by_member_id",
-    CASE WHEN "event"."state" IN (
-      'voting',
-      'finished_without_winner',
-      'finished_with_winner'
-    ) THEN
-      'voting'::"notify_level"
-    ELSE
-      CASE WHEN "event"."state" IN (
-        'verification',
-        'canceled_after_revocation_during_verification',
-        'canceled_no_initiative_admitted'
-      ) THEN
-        'verification'::"notify_level"
-      ELSE
-        CASE WHEN "event"."state" IN (
-          'discussion',
-          'canceled_after_revocation_during_discussion'
-        ) THEN
-          'discussion'::"notify_level"
-        ELSE
-          'all'::"notify_level"
-        END
-      END
-    END AS "notify_level",
-    "event".*
-  FROM "member" CROSS JOIN "event"
-  LEFT JOIN "issue"
-    ON "event"."issue_id" = "issue"."id"
-  LEFT JOIN "membership"
-    ON "member"."id" = "membership"."member_id"
-    AND "issue"."area_id" = "membership"."area_id"
-  LEFT JOIN "interest"
-    ON "member"."id" = "interest"."member_id"
-    AND "event"."issue_id" = "interest"."issue_id"
-  LEFT JOIN "ignored_member"
-    ON "member"."id" = "ignored_member"."member_id"
-    AND "event"."member_id" = "ignored_member"."other_member_id"
-  LEFT JOIN "ignored_initiative"
-    ON "member"."id" = "ignored_initiative"."member_id"
-    AND "event"."initiative_id" = "ignored_initiative"."initiative_id"
-  WHERE (
-    ( "member"."notify_level" >= 'all' ) OR
-    ( "member"."notify_level" >= 'voting' AND
-      "event"."state" IN (
-        'voting',
-        'finished_without_winner',
-        'finished_with_winner' ) ) OR
-    ( "member"."notify_level" >= 'verification' AND
-      "event"."state" IN (
-        'verification',
-        'canceled_after_revocation_during_verification',
-        'canceled_no_initiative_admitted' ) ) OR
-    ( "member"."notify_level" >= 'discussion' AND
-      "event"."state" IN (
-        'discussion',
-        'canceled_after_revocation_during_discussion' ) ) )
     TRUE AS "supported",
     EXISTS (
       SELECT NULL FROM "draft"
