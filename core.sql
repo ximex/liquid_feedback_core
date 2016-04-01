@@ -2403,6 +2403,7 @@ CREATE VIEW "updated_initiative" AS
     NOT EXISTS (
       SELECT NULL FROM "initiative" AS "better_initiative"
       WHERE
+        "better_initiative"."issue_id" = "initiative"."issue_id" AND
         ("better_initiative"."harmonic_weight", -"better_initiative"."id") >
         ("initiative"."harmonic_weight", -"better_initiative"."id")
     ) AS "leading",
@@ -2501,6 +2502,7 @@ CREATE VIEW "updated_or_featured_initiative" AS
     NOT EXISTS (
       SELECT NULL FROM "initiative" AS "better_initiative"
       WHERE
+        "better_initiative"."issue_id" = "initiative"."issue_id" AND
         ("better_initiative"."harmonic_weight", -"better_initiative"."id") >
         ("initiative"."harmonic_weight", -"better_initiative"."id")
     ) AS "leading",
