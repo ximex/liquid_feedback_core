@@ -78,14 +78,14 @@ CREATE FUNCTION "featured_initiative"
   RETURNS SETOF "initiative"
   LANGUAGE 'plpgsql' STABLE AS $$
     DECLARE
-      "sample_size_v"     INT4;
+      "member_row"        "member"%ROWTYPE;
       "member_id_v"       "member"."id"%TYPE;
       "seed_v"            TEXT;
       "result_row"        "initiative"%ROWTYPE;
       "match_v"           BOOLEAN;
       "initiative_id_ary" INT4[];  --"initiative"."id"%TYPE[]
     BEGIN
-      SELECT INTO "sample_size_v" "sample_size" FROM "member" WHERE "id" = "member_id_p";
+      SELECT INTO "member_row" * FROM "member" WHERE "id" = "member_id_p";
       "initiative_id_ary" := '{}';
       LOOP
         "match_v" := FALSE;
@@ -93,7 +93,7 @@ CREATE FUNCTION "featured_initiative"
           SELECT * FROM (
             SELECT DISTINCT
               "supporter"."member_id",
-              md5("member_id" || '-' || "member"."notification_counter" || '-' || "area_id_p") AS "seed"
+              md5("member_id_p" || '-' || "member_row"."notification_counter" || '-' || "area_id_p" || '-' || "supporter"."member_id") AS "seed"
             FROM "supporter"
             JOIN "member" ON "member"."id" = "supporter"."member_id"
             JOIN "initiative" ON "initiative"."id" = "supporter"."initiative_id"
@@ -122,7 +122,7 @@ CREATE FUNCTION "featured_initiative"
             "match_v" := TRUE;
             "initiative_id_ary" := "initiative_id_ary" || "result_row"."id";
             RETURN NEXT "result_row";
-            IF array_length("initiative_id_ary", 1) >= "sample_size_v" THEN
+            IF array_length("initiative_id_ary", 1) >= "member_row""member_row"."sample_size" THEN
               RETURN;
             END IF;
           END IF;
