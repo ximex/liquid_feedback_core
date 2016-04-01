@@ -2412,7 +2412,7 @@ CREATE VIEW "updated_initiative" AS
   JOIN "supporter" ON
     "supporter"."member_id" = "member"."id" AND
     "supporter"."initiative_id" = "initiative"."id"
-  WHERE "issue"."state" IN ('admission', 'discussion') ISNULL
+  WHERE "issue"."state" IN ('admission', 'discussion')
   AND (
     EXISTS (
       SELECT NULL FROM "draft"
