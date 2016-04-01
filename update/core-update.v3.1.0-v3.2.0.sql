@@ -122,7 +122,7 @@ CREATE FUNCTION "featured_initiative"
             "match_v" := TRUE;
             "initiative_id_ary" := "initiative_id_ary" || "result_row"."id";
             RETURN NEXT "result_row";
-            IF array_length("initiative_id_ary", 1) >= "member_row""member_row"."sample_size" THEN
+            IF array_length("initiative_id_ary", 1) >= "member_row"."sample_size" THEN
               RETURN;
             END IF;
           END IF;
