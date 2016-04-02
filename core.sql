@@ -119,10 +119,11 @@ CREATE TABLE "member" (
         "notify_email_secret"          TEXT     UNIQUE,
         "notify_email_secret_expiry"   TIMESTAMPTZ,
         "notify_email_lock_expiry"     TIMESTAMPTZ,
-        "disable_notifications" BOOLEAN         NOT NULL DEFAULT FALSE,
-        "notification_counter"  INT4            NOT NULL DEFAULT 0,
-        "sample_size"           INT4            NOT NULL DEFAULT 3,
-        "last_notified_suggestion_id" INT8,
+        "disable_notifications"    BOOLEAN      NOT NULL DEFAULT FALSE,
+        "notification_counter"     INT4         NOT NULL DEFAULT 1,
+        "notification_sample_size" INT4         NOT NULL DEFAULT 3,
+        "notification_dow"         INT4         CHECK ("notification_dow" BETWEEN 0 AND 6),
+        "notification_hour"        INT4         CHECK ("notification_hour" BETWEEN 0 AND 23),
         "login_recovery_expiry"        TIMESTAMPTZ,
         "password_reset_secret"        TEXT     UNIQUE,
         "password_reset_secret_expiry" TIMESTAMPTZ,
@@ -227,16 +228,6 @@ CREATE TABLE "rendered_member_statement" (
         "content"               TEXT            NOT NULL );
 
 COMMENT ON TABLE "rendered_member_statement" IS 'This table may be used by frontends to cache "rendered" member statements (e.g. HTML output generated from wiki text)';
-
-
-CREATE TABLE "subscription_time" (
-        "member_id"             INT4            REFERENCES "member" ("id") ON DELETE CASCADE ON UPDATE CASCADE,
-        "day_of_week"           INT2            CONSTRAINT "day_of_week_range" CHECK ("day_of_week" BETWEEN 0 AND 6),
-        "time_of_day"           TIME            NOT NULL );
-CREATE UNIQUE INDEX "subscription_time_all_days_of_week_time_of_day_idx" ON "subscription_time" ("time_of_day", "member_id") WHERE ("day_of_week" ISNULL);
-CREATE UNIQUE INDEX "subscription_time_day_of_week_time_of_day_idx" ON "subscription_time" ("day_of_week", "time_of_day", "member_id");
-
-COMMENT ON TABLE "subscription_time" IS 'Selects when a member receives digests on new user content in the system';
 
 
 CREATE TABLE "setting" (
@@ -1277,6 +1268,15 @@ CREATE UNIQUE INDEX "notification_sent_singleton_idx" ON "notification_sent" ((1
 
 COMMENT ON TABLE "notification_sent" IS 'This table stores one row with the last event_id, for which notifications have been sent out';
 COMMENT ON INDEX "notification_sent_singleton_idx" IS 'This index ensures that "notification_sent" only contains one row maximum.';
+
+
+CREATE TABLE "initiative_notification_sent" (
+        PRIMARY KEY ("member_id", "initiative_id"),
+        "member_id"             INT4            REFERENCES "member" ("id") ON DELETE CASCADE ON UPDATE CASCADE,
+        "initiative_id"         INT4            REFERENCES "initiative" ("id") ON DELETE CASCADE ON UPDATE CASCADE,
+        "last_draft_id"         INT8            NOT NULL,
+        "last_suggestion_id"    INT8            NOT NULL );
+CREATE INDEX "initiative_notification_sent_initiative_idx" ON "initiative_notification_sent" ("initiative_id");
 
 
 
@@ -2385,7 +2385,7 @@ COMMENT ON VIEW "event_seen_by_member" IS 'Events as seen by a member, depending
 
 CREATE VIEW "updated_initiative" AS
   SELECT
-    "member"."id" AS "seen_by_member_id",
+    "supporter"."member_id" AS "seen_by_member_id",
     TRUE AS "supported",
     EXISTS (
       SELECT NULL FROM "draft"
@@ -2395,7 +2395,7 @@ CREATE VIEW "updated_initiative" AS
     ( SELECT count(1) FROM "suggestion"
       WHERE "suggestion"."initiative_id" = "initiative"."id"
       AND COALESCE(
-        "suggestion"."id" > "member"."last_notified_suggestion_id",
+        "suggestion"."id" > "sent"."last_suggestion_id",
         TRUE
       )
     ) AS "new_suggestion_count",
@@ -2411,11 +2411,12 @@ CREATE VIEW "updated_initiative" AS
           -"initiative"."id" )
     ) AS "leading",
     "initiative".*
-  FROM "member" CROSS JOIN "initiative"
+  FROM "supporter" JOIN "initiative"
+  ON "supporter"."initiative_id" = "initiative"."id"
+  LEFT JOIN "initiative_notification_sent" AS "sent"
+    ON "sent"."member_id" = "supporter"."member_id"
+    AND "sent"."initiative_id" = "initiative"."id"
   JOIN "issue" ON "issue"."id" = "initiative"."issue_id"
-  JOIN "supporter" ON
-    "supporter"."member_id" = "member"."id" AND
-    "supporter"."initiative_id" = "initiative"."id"
   WHERE "issue"."state" IN ('admission', 'discussion')
   AND (
     EXISTS (
@@ -2426,7 +2427,7 @@ CREATE VIEW "updated_initiative" AS
       SELECT NULL FROM "suggestion"
       WHERE "suggestion"."initiative_id" = "initiative"."id"
       AND COALESCE(
-        "suggestion"."id" > "member"."last_notified_suggestion_id",
+        "suggestion"."id" > "sent"."last_suggestion_id",
         TRUE
       )
     )
@@ -2482,7 +2483,7 @@ CREATE FUNCTION "featured_initiative"
             "match_v" := TRUE;
             "initiative_id_ary" := "initiative_id_ary" || "result_row"."id";
             RETURN NEXT "result_row";
-            IF array_length("initiative_id_ary", 1) >= "member_row"."sample_size" THEN
+            IF array_length("initiative_id_ary", 1) >= "member_row"."notification_sample_size" THEN
               RETURN;
             END IF;
           END IF;
