@@ -3123,8 +3123,8 @@ CREATE FUNCTION "get_initiatives_for_notification"
           VALUES (
             "member_id_p",
             "result_row"."id",
-            "last_draft_id",
-            "last_suggestion_id" )
+            "last_draft_id_v",
+            "last_suggestion_id_v" )
           ON CONFLICT ("member_id", "initiative_id") DO UPDATE SET
             "last_draft_id" = CASE
               WHEN "last_draft_id" > "last_draft_id_v"
