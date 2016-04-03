@@ -2590,10 +2590,23 @@ CREATE VIEW "leading_complement_initiative" AS
     AND "other"."id" = "subquery"."id"
   );
 
-CREATE VIEW "initiative_for_notification" AS
+CREATE VIEW "unfiltered_initiative_for_notification" AS
   SELECT * FROM "updated_or_featured_initiative"
   UNION ALL
   SELECT * FROM "leading_complement_initiative";
+
+CREATE VIEW "initiative_for_notification" AS
+  SELECT "initiative1".*
+  FROM "unfiltered_initiative_for_notification" "initiative1"
+  JOIN "issue" AS "issue1" ON "initiative1"."issue_id" = "issue1"."id"
+  WHERE EXISTS (
+    SELECT NULL
+    FROM "unfiltered_initiative_for_notification" "initiative2"
+    JOIN "issue" AS "issue2" ON "initiative2"."issue_id" = "issue2"."id"
+    WHERE "initiative1"."seen_by_member_id" = "initiative2"."seen_by_member_id"
+    AND "issue1"."area_id" = "issue2"."area_id"
+    AND ( "initiative2"."new_draft" OR "initiative2"."new_suggestion_count" > 0 )
+  );
 
 
 
