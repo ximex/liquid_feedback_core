@@ -1279,6 +1279,19 @@ CREATE TABLE "initiative_notification_sent" (
 CREATE INDEX "initiative_notification_sent_initiative_idx" ON "initiative_notification_sent" ("initiative_id");
 
 
+CREATE TABLE "newsletter" (
+        "id"                    SERIAL4         PRIMARY KEY,
+        "published"             TIMESTAMPTZ     NOT NULL,
+        "unit_id"               INT4            REFERENCES "unit" ("id") ON DELETE CASCADE ON UPDATE CASCADE,
+        "include_all_members"   BOOLEAN         NOT NULL,
+        "sent"                  TIMESTAMPTZ,
+        "subject"               TEXT            NOT NULL,
+        "content"               TEXT            NOT NULL );
+CREATE INDEX "newsletter_unit_id_idx" ON "newsletter" ("unit_id", "published");
+CREATE INDEX "newsletter_all_units_published_idx" ON "newsletter" ("published") WHERE "unit_id" ISNULL;
+CREATE INDEX "newsletter_published_idx" ON "newsletter" ("published");
+
+
 
 ----------------------------------------------
 -- Writing of history entries and event log --
