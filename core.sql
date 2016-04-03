@@ -2393,7 +2393,11 @@ CREATE VIEW "updated_initiative" AS
       AND "draft"."id" > "supporter"."draft_id"
     ) AS "new_draft",
     ( SELECT count(1) FROM "suggestion"
+      LEFT JOIN "opinion" ON
+        "opinion"."member_id" = "supporter"."member_id" AND
+        "opinion"."suggestion_id" = "suggestion"."id"
       WHERE "suggestion"."initiative_id" = "initiative"."id"
+      AND "opinion"."member_id" ISNULL
       AND COALESCE(
         "suggestion"."id" > "sent"."last_suggestion_id",
         TRUE
