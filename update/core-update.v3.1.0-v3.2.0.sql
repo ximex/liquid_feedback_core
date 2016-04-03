@@ -273,6 +273,29 @@ CREATE VIEW "initiative_for_notification" AS
     AND ( "initiative2"."new_draft" OR "initiative2"."new_suggestion_count" > 0 )
   );
 
+CREATE VIEW "newsletter_to_send" AS
+  SELECT
+    "newsletter"."id" AS "newsletter_id",
+    "member"."id" AS "member_id"
+  FROM "newsletter" CROSS JOIN "member"
+  LEFT JOIN "privilege" ON
+    "privilege"."member_id" = "member"."id" AND
+    "privilege"."unit_id" = "newsletter"."unit_id" AND
+    "privilege"."voting_right" = TRUE
+  LEFT JOIN "subscription" ON
+    "subscription"."member_id" = "member"."id" AND
+    "subscription"."unit_id" = "newsletter"."unit_id"
+  WHERE "newsletter"."published" >= now()
+  AND "newsletter"."sent" ISNULL
+  AND "member"."locked" = FALSE
+  AND (
+    "member"."disable_notifications" = FALSE OR
+    "newsletter"."include_all_members" = TRUE )
+  AND (
+    "newsletter"."unit_id" ISNULL OR
+    "privilege"."member_id" NOTNULL OR
+    "subscription"."member_id" NOTNULL );
+
 CREATE FUNCTION "get_initiatives_for_notification"
   ( "member_id_p" "member"."id"%TYPE )
   RETURNS SETOF "initiative_for_notification"
