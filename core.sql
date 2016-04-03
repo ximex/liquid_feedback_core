@@ -2508,8 +2508,21 @@ CREATE VIEW "updated_or_featured_initiative" AS
   SELECT
     "member"."id" AS "seen_by_member_id",
     FALSE AS "supported",
-    NULL::BOOLEAN AS "new_draft",
-    NULL::INTEGER AS "new_suggestion_count",
+    EXISTS (
+      SELECT NULL FROM "draft"
+      WHERE "draft"."initiative_id" = "initiative"."id"
+      AND COALESCE(
+        "draft"."id" > "sent"."last_draft_id",
+        TRUE
+      )
+    ) AS "new_draft",
+    ( SELECT count(1) FROM "suggestion"
+      WHERE "suggestion"."initiative_id" = "initiative"."id"
+      AND COALESCE(
+        "suggestion"."id" > "sent"."last_suggestion_id",
+        TRUE
+      )
+    ) AS "new_suggestion_count",
     TRUE AS "featured",
     NOT EXISTS (
       SELECT NULL FROM "initiative" AS "better_initiative"
@@ -2524,21 +2537,47 @@ CREATE VIEW "updated_or_featured_initiative" AS
     "initiative".*
   FROM "member" CROSS JOIN "area"
   CROSS JOIN LATERAL
-    "featured_initiative"("member"."id", "area"."id") AS "initiative";
+    "featured_initiative"("member"."id", "area"."id") AS "initiative"
+  LEFT JOIN "initiative_notification_sent" AS "sent"
+    ON "sent"."member_id" = "member"."id"
+    AND "sent"."initiative_id" = "initiative"."id";
 
 CREATE VIEW "leading_complement_initiative" AS
   SELECT * FROM (
     SELECT DISTINCT ON ("seen_by_member_id", "initiative"."issue_id")
-      "updated_or_featured_initiative"."seen_by_member_id",
-      FALSE AS "supported",
-      NULL::BOOLEAN AS "new_draft",
-      NULL::INTEGER AS "new_suggestion_count",
+      "uf_initiative"."seen_by_member_id",
+      "supporter"."member_id" NOTNULL AS "supported",
+      CASE WHEN "supporter"."member_id" NOTNULL THEN FALSE ELSE
+        EXISTS (
+          SELECT NULL FROM "draft"
+          WHERE "draft"."initiative_id" = "initiative"."id"
+          AND COALESCE(
+            "draft"."id" > "sent"."last_draft_id",
+            TRUE
+          )
+        )
+      END AS "new_draft",
+      CASE WHEN "supporter"."member_id" NOTNULL THEN 0 ELSE
+        ( SELECT count(1) FROM "suggestion"
+          WHERE "suggestion"."initiative_id" = "initiative"."id"
+          AND COALESCE(
+            "suggestion"."id" > "sent"."last_suggestion_id",
+            TRUE
+          )
+        )
+      END AS "new_suggestion_count",
       FALSE AS "featured",
       TRUE AS "leading",
       "initiative".*
-    FROM "updated_or_featured_initiative"
-    JOIN "initiative"
-    ON "updated_or_featured_initiative"."issue_id" = "initiative"."issue_id"
+    FROM "updated_or_featured_initiative" AS "uf_initiative"
+    JOIN "initiative" ON
+      "uf_initiative"."issue_id" = "initiative"."issue_id"
+    LEFT JOIN "supporter" ON
+      "supporter"."member_id" = "uf_initiative"."seen_by_member_id" AND
+      "supporter"."initiative_id" = "initiative"."id"
+    LEFT JOIN "initiative_notification_sent" AS "sent"
+      ON "sent"."member_id" = "uf_initiative"."seen_by_member_id"
+      AND "sent"."initiative_id" = "initiative"."id"
     ORDER BY
       "seen_by_member_id",
       "initiative"."issue_id",
