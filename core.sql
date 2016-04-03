@@ -1275,7 +1275,7 @@ CREATE TABLE "initiative_notification_sent" (
         "member_id"             INT4            REFERENCES "member" ("id") ON DELETE CASCADE ON UPDATE CASCADE,
         "initiative_id"         INT4            REFERENCES "initiative" ("id") ON DELETE CASCADE ON UPDATE CASCADE,
         "last_draft_id"         INT8            NOT NULL,
-        "last_suggestion_id"    INT8            NOT NULL );
+        "last_suggestion_id"    INT8 );
 CREATE INDEX "initiative_notification_sent_initiative_idx" ON "initiative_notification_sent" ("initiative_id");
 
 
