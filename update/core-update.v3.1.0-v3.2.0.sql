@@ -285,7 +285,7 @@ CREATE VIEW "newsletter_to_send" AS
   LEFT JOIN "subscription" ON
     "subscription"."member_id" = "member"."id" AND
     "subscription"."unit_id" = "newsletter"."unit_id"
-  WHERE "newsletter"."published" >= now()
+  WHERE "newsletter"."published" <= now()
   AND "newsletter"."sent" ISNULL
   AND "member"."locked" = FALSE
   AND (
