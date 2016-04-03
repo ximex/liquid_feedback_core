@@ -291,13 +291,13 @@ CREATE FUNCTION "get_initiatives_for_notification"
             "last_suggestion_id_v" )
           ON CONFLICT ("member_id", "initiative_id") DO UPDATE SET
             "last_draft_id" = CASE
-              WHEN "last_draft_id" > "last_draft_id_v"
-              THEN "last_draft_id"
+              WHEN "initiative_notification_sent"."last_draft_id" > "last_draft_id_v"
+              THEN "initiative_notification_sent"."last_draft_id"
               ELSE "last_draft_id_v"
             END,
             "last_suggestion_id" = CASE
-              WHEN "last_suggestion_id" > "last_suggestion_id_v"
-              THEN "last_suggestion_id"
+              WHEN "initiative_notification_sent"."last_suggestion_id" > "last_suggestion_id_v"
+              THEN "initiative_notification_sent"."last_suggestion_id"
               ELSE "last_suggestion_id_v"
             END;
         RETURN NEXT "result_row";
