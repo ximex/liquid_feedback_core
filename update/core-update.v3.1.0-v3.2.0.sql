@@ -14,8 +14,8 @@ ALTER TABLE "member" ADD COLUMN "notification_hour" INT4 CHECK ("notification_ho
 
 UPDATE "member" SET "disable_notifications" = TRUE WHERE "notify_level" = 'none';
 
-DROP TABLE "selected_event_seen_by_member";
-DROP TABLE "event_seen_by_member";
+DROP VIEW "selected_event_seen_by_member";
+DROP VIEW "event_seen_by_member";
 ALTER TABLE "member" DROP COLUMN "notify_level";
 DROP TYPE "notify_level";
  
