@@ -2381,6 +2381,7 @@ CREATE VIEW "updated_initiative" AS
     "ignored_initiative"."member_id" = "supporter"."member_id" AND
     "ignored_initiative"."initiative_id" = "supporter"."initiative_id"
   WHERE "issue"."state" IN ('admission', 'discussion')
+  AND "initiative"."revoked" ISNULL
   AND "ignored_initiative"."member_id" ISNULL
   AND (
     EXISTS (
@@ -2466,6 +2467,7 @@ CREATE FUNCTION "featured_initiative"
             WHERE "supporter"."member_id" = "member_id_v"
             AND "issue"."area_id" = "area_id_p"
             AND "issue"."state" IN ('admission', 'discussion', 'verification')
+            AND "initiative"."revoked" ISNULL
             AND "self_support"."member_id" ISNULL
             AND NOT "initiative_id_ary" @> ARRAY["initiative"."id"]
             AND (
@@ -2534,6 +2536,7 @@ CREATE VIEW "leading_complement_initiative" AS
       "uf_initiative_full"."id" = "uf_initiative"."initiative_id"
     JOIN "initiative" ON
       "initiative"."issue_id" = "uf_initiative_full"."issue_id"
+    WHERE "initiative"."revoked" ISNULL
     ORDER BY
       "uf_initiative"."recipient_id",
       "initiative"."issue_id",
