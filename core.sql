@@ -89,12 +89,6 @@ COMMENT ON COLUMN "contingent"."text_entry_limit" IS 'Number of new drafts or su
 COMMENT ON COLUMN "contingent"."initiative_limit" IS 'Number of new initiatives to be opened by each member within a given time frame';
 
 
-CREATE TYPE "notify_level" AS ENUM
-  ('none', 'voting', 'verification', 'discussion', 'all');
-
-COMMENT ON TYPE "notify_level" IS 'Level of notification: ''none'' = no notifications, ''voting'' = notifications about finished issues and issues in voting, ''verification'' = notifications about finished issues, issues in voting and verification phase, ''discussion'' = notifications about everything except issues in admission phase, ''all'' = notifications about everything';
-
-
 CREATE TABLE "member" (
         "id"                    SERIAL4         PRIMARY KEY,
         "created"               TIMESTAMPTZ     NOT NULL DEFAULT now(),
@@ -2339,135 +2333,96 @@ CREATE VIEW "member_contingent_left" AS
 COMMENT ON VIEW "member_contingent_left" IS 'Amount of text entries or initiatives which can be posted now instantly by a member. This view should be used by a frontend to determine, if the contingent for posting is exhausted.';
 
 
-CREATE VIEW "event_seen_by_member" AS
+CREATE VIEW "event_for_notification" AS
   SELECT
-    "member"."id" AS "seen_by_member_id",
-    CASE WHEN "event"."state" IN (
-      'voting',
-      'finished_without_winner',
-      'finished_with_winner'
-    ) THEN
-      'voting'::"notify_level"
-    ELSE
-      CASE WHEN "event"."state" IN (
-        'verification',
-        'canceled_after_revocation_during_verification',
-        'canceled_no_initiative_admitted'
-      ) THEN
-        'verification'::"notify_level"
-      ELSE
-        CASE WHEN "event"."state" IN (
-          'discussion',
-          'canceled_after_revocation_during_discussion'
-        ) THEN
-          'discussion'::"notify_level"
-        ELSE
-          'all'::"notify_level"
-        END
-      END
-    END AS "notify_level",
+    "member"."id" AS "recipient_id",
     "event".*
   FROM "member" CROSS JOIN "event"
-  LEFT JOIN "issue"
-    ON "event"."issue_id" = "issue"."id"
-  LEFT JOIN "membership"
-    ON "member"."id" = "membership"."member_id"
-    AND "issue"."area_id" = "membership"."area_id"
-  LEFT JOIN "interest"
-    ON "member"."id" = "interest"."member_id"
-    AND "event"."issue_id" = "interest"."issue_id"
-  LEFT JOIN "ignored_member"
-    ON "member"."id" = "ignored_member"."member_id"
-    AND "event"."member_id" = "ignored_member"."other_member_id"
-  LEFT JOIN "ignored_initiative"
-    ON "member"."id" = "ignored_initiative"."member_id"
-    AND "event"."initiative_id" = "ignored_initiative"."initiative_id"
-  WHERE (
-    "interest"."member_id" NOTNULL OR
-    ( "membership"."member_id" NOTNULL AND
-      "event"."event" IN (
-        'issue_state_changed',
-        'initiative_created_in_new_issue',
-        'initiative_created_in_existing_issue',
-        'initiative_revoked' ) ) )
-  AND "ignored_member"."member_id" ISNULL
-  AND "ignored_initiative"."member_id" ISNULL;
+  JOIN "issue" ON "issue"."id" = "event"."issue_id"
+  JOIN "area" ON "area"."id" = "issue"."area_id"
+  LEFT JOIN "privilege" ON
+    "privilege"."member_id" = "member"."id" AND
+    "privilege"."unit_id" = "area"."unit_id" AND
+    "privilege"."voting_right" = TRUE
+  LEFT JOIN "subscription" ON
+    "subscription"."member_id" = "member"."id" AND
+    "subscription"."unit_id" = "area"."unit_id"
+  LEFT JOIN "ignored_area" ON
+    "ignored_area"."member_id" = "member"."id" AND
+    "ignored_area"."area_id" = "issue"."area_id"
+  LEFT JOIN "interest" ON
+    "interest"."member_id" = "member"."id" AND
+    "interest"."issue_id" = "event"."issue_id"
+  LEFT JOIN "supporter" ON
+    "supporter"."member_id" = "member"."id" AND
+    "supporter"."initiative_id" = "event"."initiative_id"
+  WHERE ("privilege"."member_id" NOTNULL OR "subscription"."member_id" NOTNULL)
+  AND ("ignored_area"."member_id" ISNULL OR "interest"."member_id" NOTNULL)
+  AND (
+    "event"."event" = 'issue_state_changed'::"event_type" OR
+    ( "event"."event" = 'initiative_revoked'::"event_type" AND
+      "supporter"."member_id" NOTNULL ) );
 
-COMMENT ON VIEW "event_seen_by_member" IS 'Events as seen by a member, depending on its memberships, interests and support, but ignoring members "notify_level"';
+COMMENT ON VIEW "event_for_notification" IS 'TODO: documentation';
 
 
 CREATE VIEW "updated_initiative" AS
   SELECT
-    "supporter"."member_id" AS "seen_by_member_id",
-    TRUE AS "supported",
-    EXISTS (
-      SELECT NULL FROM "draft"
-      WHERE "draft"."initiative_id" = "initiative"."id"
-      AND "draft"."id" > "supporter"."draft_id"
-    ) AS "new_draft",
-    ( SELECT count(1) FROM "suggestion"
-      LEFT JOIN "opinion" ON
-        "opinion"."member_id" = "supporter"."member_id" AND
-        "opinion"."suggestion_id" = "suggestion"."id"
-      WHERE "suggestion"."initiative_id" = "initiative"."id"
-      AND "opinion"."member_id" ISNULL
-      AND COALESCE(
-        "suggestion"."id" > "sent"."last_suggestion_id",
-        TRUE
-      )
-    ) AS "new_suggestion_count",
+    "supporter"."member_id" AS "recipient_id",
     FALSE AS "featured",
-    NOT EXISTS (
-      SELECT NULL FROM "initiative" AS "better_initiative"
-      WHERE
-        "better_initiative"."issue_id" = "initiative"."issue_id"
-      AND
-        ( COALESCE("better_initiative"."harmonic_weight", -1),
-          -"better_initiative"."id" ) >
-        ( COALESCE("initiative"."harmonic_weight", -1),
-          -"initiative"."id" )
-    ) AS "leading",
-    "initiative".*
-  FROM "supporter" JOIN "initiative"
-  ON "supporter"."initiative_id" = "initiative"."id"
-  LEFT JOIN "initiative_notification_sent" AS "sent"
-    ON "sent"."member_id" = "supporter"."member_id"
-    AND "sent"."initiative_id" = "initiative"."id"
+    "supporter"."initiative_id"
+  FROM "supporter"
+  JOIN "initiative" ON "supporter"."initiative_id" = "initiative"."id"
   JOIN "issue" ON "issue"."id" = "initiative"."issue_id"
+  LEFT JOIN "initiative_notification_sent" AS "sent" ON
+    "sent"."member_id" = "supporter"."member_id" AND
+    "sent"."initiative_id" = "supporter"."initiative_id"
+  LEFT JOIN "ignored_initiative" ON
+    "ignored_initiative"."member_id" = "supporter"."member_id" AND
+    "ignored_initiative"."initiative_id" = "supporter"."initiative_id"
   WHERE "issue"."state" IN ('admission', 'discussion')
+  AND "ignored_initiative"."member_id" ISNULL
   AND (
     EXISTS (
       SELECT NULL FROM "draft"
-      WHERE "draft"."initiative_id" = "initiative"."id"
+      LEFT JOIN "ignored_member" ON
+        "ignored_member"."member_id" = "supporter"."member_id" AND
+        "ignored_member"."other_member_id" = "draft"."author_id"
+      WHERE "draft"."initiative_id" = "supporter"."initiative_id"
       AND "draft"."id" > "supporter"."draft_id"
+      AND "ignored_member"."member_id" ISNULL
     ) OR EXISTS (
       SELECT NULL FROM "suggestion"
       LEFT JOIN "opinion" ON
         "opinion"."member_id" = "supporter"."member_id" AND
         "opinion"."suggestion_id" = "suggestion"."id"
-      WHERE "suggestion"."initiative_id" = "initiative"."id"
+      LEFT JOIN "ignored_member" ON
+        "ignored_member"."member_id" = "supporter"."member_id" AND
+        "ignored_member"."other_member_id" = "suggestion"."author_id"
+      WHERE "suggestion"."initiative_id" = "supporter"."initiative_id"
       AND "opinion"."member_id" ISNULL
-      AND COALESCE(
-        "suggestion"."id" > "sent"."last_suggestion_id",
-        TRUE
-      )
+      AND COALESCE("suggestion"."id" > "sent"."last_suggestion_id", TRUE)
+      AND "ignored_member"."member_id" ISNULL
     )
   );
 
 CREATE FUNCTION "featured_initiative"
-  ( "member_id_p" "member"."id"%TYPE,
-    "area_id_p"   "area"."id"%TYPE )
-  RETURNS SETOF "initiative"
+  ( "recipient_id_p" "member"."id"%TYPE,
+    "area_id_p"      "area"."id"%TYPE )
+  RETURNS SETOF "initiative"."id"%TYPE
   LANGUAGE 'plpgsql' STABLE AS $$
     DECLARE
-      "member_row"        "member"%ROWTYPE;
+      "counter_v"         "member"."notification_counter"%TYPE;
+      "sample_size_v"     "member"."notification_sample_size"%TYPE;
+      "initiative_id_ary" INT4[];  --"initiative"."id"%TYPE[]
+      "match_v"           BOOLEAN;
       "member_id_v"       "member"."id"%TYPE;
       "seed_v"            TEXT;
-      "result_row"        "initiative"%ROWTYPE;
-      "match_v"           BOOLEAN;
-      "initiative_id_ary" INT4[];  --"initiative"."id"%TYPE[]
+      "initiative_id_v"   "initiative"."id"%TYPE;
     BEGIN
-      SELECT INTO "member_row" * FROM "member" WHERE "id" = "member_id_p";
+      SELECT "notification_counter", "notification_sample_size"
+        INTO "counter_v", "sample_size_v"
+        FROM "member" WHERE "id" = "recipient_id_p";
       "initiative_id_ary" := '{}';
       LOOP
         "match_v" := FALSE;
@@ -2475,38 +2430,64 @@ CREATE FUNCTION "featured_initiative"
           SELECT * FROM (
             SELECT DISTINCT
               "supporter"."member_id",
-              md5("member_id_p" || '-' || "member_row"."notification_counter" || '-' || "area_id_p" || '-' || "supporter"."member_id") AS "seed"
+              md5(
+                "recipient_id_p" || '-' ||
+                "counter_v"      || '-' ||
+                "area_id_p"      || '-' ||
+                "supporter"."member_id"
+              ) AS "seed"
             FROM "supporter"
-            JOIN "member" ON "member"."id" = "supporter"."member_id"
             JOIN "initiative" ON "initiative"."id" = "supporter"."initiative_id"
             JOIN "issue" ON "issue"."id" = "initiative"."issue_id"
-            WHERE "supporter"."member_id" != "member_id_p"
+            WHERE "supporter"."member_id" != "recipient_id_p"
             AND "issue"."area_id" = "area_id_p"
             AND "issue"."state" IN ('admission', 'discussion', 'verification')
           ) AS "subquery"
           ORDER BY "seed"
         LOOP
-          SELECT "initiative".* INTO "result_row"
+          SELECT "initiative"."id" INTO "initiative_id_v"
             FROM "initiative"
             JOIN "issue" ON "issue"."id" = "initiative"."issue_id"
+            JOIN "area" ON "area"."id" = "issue"."area_id"
             JOIN "supporter" ON "supporter"."initiative_id" = "initiative"."id"
             LEFT JOIN "supporter" AS "self_support" ON
               "self_support"."initiative_id" = "initiative"."id" AND
-              "self_support"."member_id" = "member_id_p"
+              "self_support"."member_id" = "recipient_id_p"
+            LEFT JOIN "privilege" ON
+              "privilege"."member_id" = "recipient_id_p" AND
+              "privilege"."unit_id" = "area"."unit_id" AND
+              "privilege"."voting_right" = TRUE
+            LEFT JOIN "subscription" ON
+              "subscription"."member_id" = "recipient_id_p" AND
+              "subscription"."unit_id" = "area"."unit_id"
+            LEFT JOIN "ignored_initiative" ON
+              "ignored_initiative"."member_id" = "recipient_id_p" AND
+              "ignored_initiative"."initiative_id" = "initiative"."id"
             WHERE "supporter"."member_id" = "member_id_v"
             AND "issue"."area_id" = "area_id_p"
             AND "issue"."state" IN ('admission', 'discussion', 'verification')
             AND "self_support"."member_id" ISNULL
             AND NOT "initiative_id_ary" @> ARRAY["initiative"."id"]
+            AND (
+              "privilege"."member_id" NOTNULL OR
+              "subscription"."member_id" NOTNULL )
+            AND "ignored_initiative"."member_id" ISNULL
+            AND NOT EXISTS (
+              SELECT NULL FROM "draft"
+              JOIN "ignored_member" ON
+                "ignored_member"."member_id" = "recipient_id_p" AND
+                "ignored_member"."other_member_id" = "draft"."author_id"
+              WHERE "draft"."initiative_id" = "initiative"."id"
+            )
             ORDER BY md5("seed_v" || '-' || "initiative"."id")
             LIMIT 1;
           IF FOUND THEN
             "match_v" := TRUE;
-            "initiative_id_ary" := "initiative_id_ary" || "result_row"."id";
-            RETURN NEXT "result_row";
-            IF array_length("initiative_id_ary", 1) >= "member_row"."notification_sample_size" THEN
+            RETURN NEXT "initiative_id_v";
+            IF array_length("initiative_id_ary", 1) + 1 >= "sample_size_v" THEN
               RETURN;
             END IF;
+            "initiative_id_ary" := "initiative_id_ary" || "initiative_id_v";
           END IF;
         END LOOP;
         EXIT WHEN NOT "match_v";
@@ -2516,115 +2497,120 @@ CREATE FUNCTION "featured_initiative"
   $$;
 
 CREATE VIEW "updated_or_featured_initiative" AS
-  SELECT * FROM "updated_initiative"
-  UNION ALL
   SELECT
-    "member"."id" AS "seen_by_member_id",
-    FALSE AS "supported",
-    EXISTS (
-      SELECT NULL FROM "draft"
-      WHERE "draft"."initiative_id" = "initiative"."id"
-      AND COALESCE(
-        "draft"."id" > "sent"."last_draft_id",
-        TRUE
-      )
-    ) AS "new_draft",
-    ( SELECT count(1) FROM "suggestion"
-      WHERE "suggestion"."initiative_id" = "initiative"."id"
-      AND COALESCE(
-        "suggestion"."id" > "sent"."last_suggestion_id",
-        TRUE
-      )
-    ) AS "new_suggestion_count",
-    TRUE AS "featured",
+    "subquery".*,
     NOT EXISTS (
       SELECT NULL FROM "initiative" AS "better_initiative"
-      WHERE
-        "better_initiative"."issue_id" = "initiative"."issue_id"
+      WHERE "better_initiative"."issue_id" = "initiative"."issue_id"
       AND
         ( COALESCE("better_initiative"."harmonic_weight", -1),
           -"better_initiative"."id" ) >
         ( COALESCE("initiative"."harmonic_weight", -1),
           -"initiative"."id" )
-    ) AS "leading",
-    "initiative".*
-  FROM "member" CROSS JOIN "area"
-  CROSS JOIN LATERAL
-    "featured_initiative"("member"."id", "area"."id") AS "initiative"
-  LEFT JOIN "initiative_notification_sent" AS "sent"
-    ON "sent"."member_id" = "member"."id"
-    AND "sent"."initiative_id" = "initiative"."id";
+    ) AS "leading"
+  FROM (
+    SELECT * FROM "updated_initiative"
+    UNION ALL
+    SELECT
+      "member"."id" AS "recipient_id",
+      TRUE AS "featured",
+      "featured_initiative_id" AS "initiative_id"
+    FROM "member" CROSS JOIN "area"
+    CROSS JOIN LATERAL
+      "featured_initiative"("member"."id", "area"."id") AS "featured_initiative_id"
+    JOIN "initiative" ON "initiative"."id" = "featured_initiative_id"
+  ) AS "subquery"
+  JOIN "initiative" ON "initiative"."id" = "subquery"."initiative_id";
 
 CREATE VIEW "leading_complement_initiative" AS
   SELECT * FROM (
-    SELECT DISTINCT ON ("seen_by_member_id", "initiative"."issue_id")
-      "uf_initiative"."seen_by_member_id",
-      "supporter"."member_id" NOTNULL AS "supported",
-      CASE WHEN "supporter"."member_id" NOTNULL THEN FALSE ELSE
-        EXISTS (
-          SELECT NULL FROM "draft"
-          WHERE "draft"."initiative_id" = "initiative"."id"
-          AND COALESCE(
-            "draft"."id" > "sent"."last_draft_id",
-            TRUE
-          )
-        )
-      END AS "new_draft",
-      CASE WHEN "supporter"."member_id" NOTNULL THEN 0 ELSE
-        ( SELECT count(1) FROM "suggestion"
-          WHERE "suggestion"."initiative_id" = "initiative"."id"
-          AND COALESCE(
-            "suggestion"."id" > "sent"."last_suggestion_id",
-            TRUE
-          )
-        )
-      END AS "new_suggestion_count",
+    SELECT DISTINCT ON ("uf_initiative"."recipient_id", "initiative"."issue_id")
+      "uf_initiative"."recipient_id",
       FALSE AS "featured",
-      TRUE AS "leading",
-      "initiative".*
+      "uf_initiative"."initiative_id",
+      TRUE AS "leading"
     FROM "updated_or_featured_initiative" AS "uf_initiative"
+    JOIN "initiative" AS "uf_initiative_full" ON
+      "uf_initiative_full"."id" = "uf_initiative"."initiative_id"
     JOIN "initiative" ON
-      "uf_initiative"."issue_id" = "initiative"."issue_id"
-    LEFT JOIN "supporter" ON
-      "supporter"."member_id" = "uf_initiative"."seen_by_member_id" AND
-      "supporter"."initiative_id" = "initiative"."id"
-    LEFT JOIN "initiative_notification_sent" AS "sent"
-      ON "sent"."member_id" = "uf_initiative"."seen_by_member_id"
-      AND "sent"."initiative_id" = "initiative"."id"
+      "initiative"."issue_id" = "uf_initiative_full"."issue_id"
     ORDER BY
-      "seen_by_member_id",
+      "uf_initiative"."recipient_id",
       "initiative"."issue_id",
       "initiative"."harmonic_weight" DESC,
       "initiative"."id"
   ) AS "subquery"
   WHERE NOT EXISTS (
     SELECT NULL FROM "updated_or_featured_initiative" AS "other"
-    WHERE "other"."seen_by_member_id" = "subquery"."seen_by_member_id"
-    AND "other"."id" = "subquery"."id"
+    WHERE "other"."recipient_id" = "subquery"."recipient_id"
+    AND "other"."initiative_id" = "subquery"."initiative_id"
   );
 
 CREATE VIEW "unfiltered_initiative_for_notification" AS
-  SELECT * FROM "updated_or_featured_initiative"
-  UNION ALL
-  SELECT * FROM "leading_complement_initiative";
+  SELECT
+    "subquery".*,
+    "supporter"."member_id" NOTNULL AS "supported",
+    CASE WHEN "supporter"."member_id" NOTNULL THEN
+      EXISTS (
+        SELECT NULL FROM "draft"
+        WHERE "draft"."initiative_id" = "subquery"."initiative_id"
+        AND "draft"."id" > "supporter"."draft_id"
+      )
+    ELSE
+      EXISTS (
+        SELECT NULL FROM "draft"
+        WHERE "draft"."initiative_id" = "subquery"."initiative_id"
+        AND COALESCE("draft"."id" > "sent"."last_draft_id", TRUE)
+      )
+    END AS "new_draft",
+    CASE WHEN "supporter"."member_id" NOTNULL THEN
+      ( SELECT count(1) FROM "suggestion"
+        LEFT JOIN "opinion" ON
+          "opinion"."member_id" = "supporter"."member_id" AND
+          "opinion"."suggestion_id" = "suggestion"."id"
+        WHERE "suggestion"."initiative_id" = "subquery"."initiative_id"
+        AND "opinion"."member_id" ISNULL
+        AND COALESCE("suggestion"."id" > "sent"."last_suggestion_id", TRUE)
+      )
+    ELSE
+      ( SELECT count(1) FROM "suggestion"
+        WHERE "suggestion"."initiative_id" = "subquery"."initiative_id"
+        AND COALESCE("suggestion"."id" > "sent"."last_suggestion_id", TRUE)
+      )
+    END AS "new_suggestion_count"
+  FROM (
+    SELECT * FROM "updated_or_featured_initiative"
+    UNION ALL
+    SELECT * FROM "leading_complement_initiative"
+  ) AS "subquery"
+  LEFT JOIN "supporter" ON
+    "supporter"."member_id" = "subquery"."recipient_id" AND
+    "supporter"."initiative_id" = "subquery"."initiative_id"
+  LEFT JOIN "initiative_notification_sent" AS "sent" ON
+    "sent"."member_id" = "subquery"."recipient_id" AND
+    "sent"."initiative_id" = "subquery"."initiative_id";
 
 CREATE VIEW "initiative_for_notification" AS
-  SELECT "initiative1".*
-  FROM "unfiltered_initiative_for_notification" "initiative1"
-  JOIN "issue" AS "issue1" ON "initiative1"."issue_id" = "issue1"."id"
+  SELECT "unfiltered1".*
+  FROM "unfiltered_initiative_for_notification" "unfiltered1"
+  JOIN "initiative" AS "initiative1" ON
+    "initiative1"."id" = "unfiltered1"."initiative_id"
+  JOIN "issue" AS "issue1" ON "issue1"."id" = "initiative1"."issue_id"
   WHERE EXISTS (
     SELECT NULL
-    FROM "unfiltered_initiative_for_notification" "initiative2"
-    JOIN "issue" AS "issue2" ON "initiative2"."issue_id" = "issue2"."id"
-    WHERE "initiative1"."seen_by_member_id" = "initiative2"."seen_by_member_id"
+    FROM "unfiltered_initiative_for_notification" "unfiltered2"
+    JOIN "initiative" AS "initiative2" ON
+      "initiative2"."id" = "unfiltered2"."initiative_id"
+    JOIN "issue" AS "issue2" ON "issue2"."id" = "initiative2"."issue_id"
+    WHERE "unfiltered1"."recipient_id" = "unfiltered2"."recipient_id"
     AND "issue1"."area_id" = "issue2"."area_id"
-    AND ( "initiative2"."new_draft" OR "initiative2"."new_suggestion_count" > 0 )
+    AND ("unfiltered2"."new_draft" OR "unfiltered2"."new_suggestion_count" > 0 )
   );
 
 CREATE VIEW "newsletter_to_send" AS
   SELECT
-    "newsletter"."id" AS "newsletter_id",
-    "member"."id" AS "member_id"
+    "member"."id" AS "recipient_id",
+    "newsletter"."id" AS "newsletter_id"
   FROM "newsletter" CROSS JOIN "member"
   LEFT JOIN "privilege" ON
     "privilege"."member_id" = "member"."id" AND
@@ -3146,19 +3132,19 @@ CREATE FUNCTION "get_initiatives_for_notification"
       PERFORM NULL FROM "member" WHERE "id" = "member_id_p" FOR UPDATE;
       FOR "result_row" IN
         SELECT * FROM "initiative_for_notification"
-        WHERE "seen_by_member_id" = "member_id_p"
+        WHERE "member_id" = "member_id_p"
       LOOP
         SELECT "id" INTO "last_draft_id_v" FROM "draft"
-          WHERE "draft"."initiative_id" = "result_row"."id"
+          WHERE "draft"."initiative_id" = "result_row"."initiative_id"
           ORDER BY "id" DESC LIMIT 1;
         SELECT "id" INTO "last_suggestion_id_v" FROM "suggestion"
-          WHERE "suggestion"."initiative_id" = "result_row"."id"
+          WHERE "suggestion"."initiative_id" = "result_row"."initiative_id"
           ORDER BY "id" DESC LIMIT 1;
         INSERT INTO "initiative_notification_sent"
           ("member_id", "initiative_id", "last_draft_id", "last_suggestion_id")
           VALUES (
             "member_id_p",
-            "result_row"."id",
+            "result_row"."initiative_id",
             "last_draft_id_v",
             "last_suggestion_id_v" )
           ON CONFLICT ("member_id", "initiative_id") DO UPDATE SET
@@ -4979,6 +4965,11 @@ CREATE FUNCTION "delete_member"("member_id_p" "member"."id"%TYPE)
         "notify_email_secret"          = NULL,
         "notify_email_secret_expiry"   = NULL,
         "notify_email_lock_expiry"     = NULL,
+        "disable_notifications"        = NULL,
+        "notification_counter"         = NULL,
+        "notification_sample_size"     = NULL,
+        "notification_dow"             = NULL,
+        "notification_hour"            = NULL,
         "login_recovery_expiry"        = NULL,
         "password_reset_secret"        = NULL,
         "password_reset_secret_expiry" = NULL,
@@ -5047,7 +5038,11 @@ CREATE FUNCTION "delete_private_data"()
         "notify_email_secret"          = NULL,
         "notify_email_secret_expiry"   = NULL,
         "notify_email_lock_expiry"     = NULL,
-        "notify_level"                 = NULL,
+        "disable_notifications"        = NULL,
+        "notification_counter"         = NULL,
+        "notification_sample_size"     = NULL,
+        "notification_dow"             = NULL,
+        "notification_hour"            = NULL,
         "login_recovery_expiry"        = NULL,
         "password_reset_secret"        = NULL,
         "password_reset_secret_expiry" = NULL,
