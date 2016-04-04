@@ -3120,7 +3120,7 @@ COMMENT ON FUNCTION "dont_require_transaction_isolation"() IS 'Raises a warning,
 -------------------------
 
 CREATE FUNCTION "get_initiatives_for_notification"
-  ( "member_id_p" "member"."id"%TYPE )
+  ( "recipient_id_p" "member"."id"%TYPE )
   RETURNS SETOF "initiative_for_notification"
   LANGUAGE 'plpgsql' VOLATILE AS $$
     DECLARE
@@ -3129,10 +3129,10 @@ CREATE FUNCTION "get_initiatives_for_notification"
       "last_suggestion_id_v" "suggestion"."id"%TYPE;
     BEGIN
       PERFORM "require_transaction_isolation"();
-      PERFORM NULL FROM "member" WHERE "id" = "member_id_p" FOR UPDATE;
+      PERFORM NULL FROM "member" WHERE "id" = "recipient_id_p" FOR UPDATE;
       FOR "result_row" IN
         SELECT * FROM "initiative_for_notification"
-        WHERE "member_id" = "member_id_p"
+        WHERE "recipient_id" = "recipient_id_p"
       LOOP
         SELECT "id" INTO "last_draft_id_v" FROM "draft"
           WHERE "draft"."initiative_id" = "result_row"."initiative_id"
@@ -3143,7 +3143,7 @@ CREATE FUNCTION "get_initiatives_for_notification"
         INSERT INTO "initiative_notification_sent"
           ("member_id", "initiative_id", "last_draft_id", "last_suggestion_id")
           VALUES (
-            "member_id_p",
+            "recipient_id_p",
             "result_row"."initiative_id",
             "last_draft_id_v",
             "last_suggestion_id_v" )
@@ -3162,12 +3162,12 @@ CREATE FUNCTION "get_initiatives_for_notification"
       END LOOP;
       DELETE FROM "initiative_notification_sent"
         USING "initiative", "issue"
-        WHERE "initiative_notification_sent"."member_id" = "member_id_p"
+        WHERE "initiative_notification_sent"."member_id" = "recipient_id_p"
         AND "initiative"."id" = "initiative_notification_sent"."initiative_id"
         AND "issue"."id" = "initiative"."issue_id"
         AND ( "issue"."closed" NOTNULL OR "issue"."fully_frozen" NOTNULL );
       UPDATE "member" SET "notification_counter" = "notification_counter" + 1
-        WHERE "id" = "member_id_p";
+        WHERE "id" = "recipient_id_p";
       RETURN;
     END;
   $$;
