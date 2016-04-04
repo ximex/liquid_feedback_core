@@ -2503,9 +2503,9 @@ CREATE VIEW "updated_or_featured_initiative" AS
       SELECT NULL FROM "initiative" AS "better_initiative"
       WHERE "better_initiative"."issue_id" = "initiative"."issue_id"
       AND
-        ( COALESCE("better_initiative"."harmonic_weight", -1),
+        ( COALESCE("better_initiative"."supporter_count", -1),
           -"better_initiative"."id" ) >
-        ( COALESCE("initiative"."harmonic_weight", -1),
+        ( COALESCE("initiative"."supporter_count", -1),
           -"initiative"."id" )
     ) AS "leading"
   FROM (
@@ -2537,7 +2537,7 @@ CREATE VIEW "leading_complement_initiative" AS
     ORDER BY
       "uf_initiative"."recipient_id",
       "initiative"."issue_id",
-      "initiative"."harmonic_weight" DESC,
+      "initiative"."supporter_count" DESC,
       "initiative"."id"
   ) AS "subquery"
   WHERE NOT EXISTS (
