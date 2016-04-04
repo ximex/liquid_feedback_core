@@ -118,6 +118,7 @@ CREATE TABLE "member" (
         "notification_sample_size" INT4         NOT NULL DEFAULT 3,
         "notification_dow"         INT4         CHECK ("notification_dow" BETWEEN 0 AND 6),
         "notification_hour"        INT4         CHECK ("notification_hour" BETWEEN 0 AND 23),
+        "notification_sent"        TIMESTAMP,
         "login_recovery_expiry"        TIMESTAMPTZ,
         "password_reset_secret"        TEXT     UNIQUE,
         "password_reset_secret_expiry" TIMESTAMPTZ,
@@ -2609,6 +2610,17 @@ CREATE VIEW "initiative_for_notification" AS
     AND "issue1"."area_id" = "issue2"."area_id"
     AND ("unfiltered2"."new_draft" OR "unfiltered2"."new_suggestion_count" > 0 )
   );
+
+CREATE VIEW "scheduled_notification_to_send" AS
+  SELECT "id" AS "recipient_id"
+  FROM "member"
+  WHERE "member"."disable_notifications" = FALSE
+  AND COALESCE("notification_dow" = EXTRACT(DOW FROM now()), TRUE)
+  AND "notification_hour" = EXTRACT(HOUR FROM now())
+  AND NOT (
+    "notification_sent" NOTNULL AND
+    "notification_sent"::DATE = now()::DATE AND
+    EXTRACT(HOUR FROM "notification_sent") = EXTRACT(HOUR FROM now()) );
 
 CREATE VIEW "newsletter_to_send" AS
   SELECT
