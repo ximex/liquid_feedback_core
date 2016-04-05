@@ -331,15 +331,42 @@ CREATE VIEW "initiative_for_notification" AS
   );
 
 CREATE VIEW "scheduled_notification_to_send" AS
-  SELECT "id" AS "recipient_id"
-  FROM "member"
-  WHERE "member"."disable_notifications" = FALSE
-  AND COALESCE("notification_dow" = EXTRACT(DOW FROM now()), TRUE)
-  AND "notification_hour" = EXTRACT(HOUR FROM now())
-  AND NOT (
-    "notification_sent" NOTNULL AND
-    "notification_sent"::DATE = now()::DATE AND
-    EXTRACT(HOUR FROM "notification_sent") = EXTRACT(HOUR FROM now()) );
+  SELECT * FROM (
+    SELECT
+      "id" AS "recipient_id",
+      now() - CASE WHEN "notification_dow" ISNULL THEN
+        ( "notification_sent"::DATE + CASE
+          WHEN EXTRACT(HOUR FROM "notification_sent") < "notification_hour"
+          THEN 0 ELSE 1 END
+        )::TIMESTAMP + '1 hour'::INTERVAL * "notification_hour"
+      ELSE
+        ( "notification_sent"::DATE +
+          ( 7 + "notification_dow" -
+            EXTRACT(DOW FROM
+              ( "notification_sent"::DATE + CASE
+                WHEN EXTRACT(HOUR FROM "notification_sent") < "notification_hour"
+                THEN 0 ELSE 1 END
+              )::TIMESTAMP + '1 hour'::INTERVAL * "notification_hour"
+            )::INTEGER
+          ) % 7 +
+          CASE
+            WHEN EXTRACT(HOUR FROM "notification_sent") < "notification_hour"
+            THEN 0 ELSE 1
+          END
+        )::TIMESTAMP + '1 hour'::INTERVAL * "notification_hour"
+      END AS "pending"
+    FROM (
+      SELECT
+        "id",
+        COALESCE("notification_sent", "activated") AS "notification_sent",
+        "notification_dow",
+        "notification_hour"
+      FROM "member"
+      WHERE "disable_notifications" = FALSE
+      AND "notification_hour" NOTNULL
+    ) AS "subquery1"
+  ) AS "subquery2"
+  WHERE "pending" > '0'::INTERVAL;
 
 CREATE VIEW "newsletter_to_send" AS
   SELECT
@@ -411,7 +438,9 @@ CREATE FUNCTION "get_initiatives_for_notification"
         AND "initiative"."id" = "initiative_notification_sent"."initiative_id"
         AND "issue"."id" = "initiative"."issue_id"
         AND ( "issue"."closed" NOTNULL OR "issue"."fully_frozen" NOTNULL );
-      UPDATE "member" SET "notification_counter" = "notification_counter" + 1
+      UPDATE "member" SET
+        "notification_counter" = "notification_counter" + 1 AND
+        "notification_sent" = now()
         WHERE "id" = "recipient_id_p";
       RETURN;
     END;
