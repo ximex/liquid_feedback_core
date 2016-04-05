@@ -3211,7 +3211,7 @@ CREATE FUNCTION "get_initiatives_for_notification"
         AND "issue"."id" = "initiative"."issue_id"
         AND ( "issue"."closed" NOTNULL OR "issue"."fully_frozen" NOTNULL );
       UPDATE "member" SET
-        "notification_counter" = "notification_counter" + 1 AND
+        "notification_counter" = "notification_counter" + 1,
         "notification_sent" = now()
         WHERE "id" = "recipient_id_p";
       RETURN;
