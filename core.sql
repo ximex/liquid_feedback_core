@@ -1259,21 +1259,21 @@ COMMENT ON COLUMN "event"."member_id"  IS 'Member who caused the event, if appli
 COMMENT ON COLUMN "event"."state"      IS 'If issue_id is set: state of affected issue; If state changed: new state';
 
 
-CREATE TABLE "notification_sent" (
+CREATE TABLE "notification_event_sent" (
         "event_id"              INT8            NOT NULL );
-CREATE UNIQUE INDEX "notification_sent_singleton_idx" ON "notification_sent" ((1));
+CREATE UNIQUE INDEX "notification_event_sent_singleton_idx" ON "notification_event_sent" ((1));
 
-COMMENT ON TABLE "notification_sent" IS 'This table stores one row with the last event_id, for which notifications have been sent out';
-COMMENT ON INDEX "notification_sent_singleton_idx" IS 'This index ensures that "notification_sent" only contains one row maximum.';
+COMMENT ON TABLE "notification_event_sent" IS 'This table stores one row with the last event_id, for which notifications have been sent out';
+COMMENT ON INDEX "notification_event_sent_singleton_idx" IS 'This index ensures that "notification_event_sent" only contains one row maximum.';
 
 
-CREATE TABLE "initiative_notification_sent" (
+CREATE TABLE "notification_initiative_sent" (
         PRIMARY KEY ("member_id", "initiative_id"),
         "member_id"             INT4            REFERENCES "member" ("id") ON DELETE CASCADE ON UPDATE CASCADE,
         "initiative_id"         INT4            REFERENCES "initiative" ("id") ON DELETE CASCADE ON UPDATE CASCADE,
         "last_draft_id"         INT8            NOT NULL,
         "last_suggestion_id"    INT8 );
-CREATE INDEX "initiative_notification_sent_initiative_idx" ON "initiative_notification_sent" ("initiative_id");
+CREATE INDEX "notification_initiative_sent_initiative_idx" ON "notification_initiative_sent" ("initiative_id");
 
 
 CREATE TABLE "newsletter" (
@@ -2377,7 +2377,7 @@ CREATE VIEW "updated_initiative" AS
   FROM "supporter"
   JOIN "initiative" ON "supporter"."initiative_id" = "initiative"."id"
   JOIN "issue" ON "issue"."id" = "initiative"."issue_id"
-  LEFT JOIN "initiative_notification_sent" AS "sent" ON
+  LEFT JOIN "notification_initiative_sent" AS "sent" ON
     "sent"."member_id" = "supporter"."member_id" AND
     "sent"."initiative_id" = "supporter"."initiative_id"
   LEFT JOIN "ignored_initiative" ON
@@ -2592,7 +2592,7 @@ CREATE VIEW "unfiltered_initiative_for_notification" AS
   LEFT JOIN "supporter" ON
     "supporter"."member_id" = "subquery"."recipient_id" AND
     "supporter"."initiative_id" = "subquery"."initiative_id"
-  LEFT JOIN "initiative_notification_sent" AS "sent" ON
+  LEFT JOIN "notification_initiative_sent" AS "sent" ON
     "sent"."member_id" = "subquery"."recipient_id" AND
     "sent"."initiative_id" = "subquery"."initiative_id";
 
@@ -3184,7 +3184,7 @@ CREATE FUNCTION "get_initiatives_for_notification"
         SELECT "id" INTO "last_suggestion_id_v" FROM "suggestion"
           WHERE "suggestion"."initiative_id" = "result_row"."initiative_id"
           ORDER BY "id" DESC LIMIT 1;
-        INSERT INTO "initiative_notification_sent"
+        INSERT INTO "notification_initiative_sent"
           ("member_id", "initiative_id", "last_draft_id", "last_suggestion_id")
           VALUES (
             "recipient_id_p",
@@ -3193,21 +3193,21 @@ CREATE FUNCTION "get_initiatives_for_notification"
             "last_suggestion_id_v" )
           ON CONFLICT ("member_id", "initiative_id") DO UPDATE SET
             "last_draft_id" = CASE
-              WHEN "initiative_notification_sent"."last_draft_id" > "last_draft_id_v"
-              THEN "initiative_notification_sent"."last_draft_id"
+              WHEN "notification_initiative_sent"."last_draft_id" > "last_draft_id_v"
+              THEN "notification_initiative_sent"."last_draft_id"
               ELSE "last_draft_id_v"
             END,
             "last_suggestion_id" = CASE
-              WHEN "initiative_notification_sent"."last_suggestion_id" > "last_suggestion_id_v"
-              THEN "initiative_notification_sent"."last_suggestion_id"
+              WHEN "notification_initiative_sent"."last_suggestion_id" > "last_suggestion_id_v"
+              THEN "notification_initiative_sent"."last_suggestion_id"
               ELSE "last_suggestion_id_v"
             END;
         RETURN NEXT "result_row";
       END LOOP;
-      DELETE FROM "initiative_notification_sent"
+      DELETE FROM "notification_initiative_sent"
         USING "initiative", "issue"
-        WHERE "initiative_notification_sent"."member_id" = "recipient_id_p"
-        AND "initiative"."id" = "initiative_notification_sent"."initiative_id"
+        WHERE "notification_initiative_sent"."member_id" = "recipient_id_p"
+        AND "initiative"."id" = "notification_initiative_sent"."initiative_id"
         AND "issue"."id" = "initiative"."issue_id"
         AND ( "issue"."closed" NOTNULL OR "issue"."fully_frozen" NOTNULL );
       UPDATE "member" SET
