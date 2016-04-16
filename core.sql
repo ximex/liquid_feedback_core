@@ -187,7 +187,12 @@ COMMENT ON COLUMN "member"."notify_email_unconfirmed"   IS 'Unconfirmed email ad
 COMMENT ON COLUMN "member"."notify_email_secret"        IS 'Secret sent to the address in "notify_email_unconformed"';
 COMMENT ON COLUMN "member"."notify_email_secret_expiry" IS 'Expiry date/time for "notify_email_secret"';
 COMMENT ON COLUMN "member"."notify_email_lock_expiry"   IS 'Date/time until no further email confirmation mails may be sent (abuse protection)';
-COMMENT ON COLUMN "member"."disable_notifications" IS 'TRUE if member does not want to receive notifications';
+COMMENT ON COLUMN "member"."disable_notifications"    IS 'TRUE if member does not want to receive notifications';
+COMMENT ON COLUMN "member"."notification_counter"     IS 'Sequential number of next scheduled notification message (used as a seed for pseudo-random initiative selection algorithm)';
+COMMENT ON COLUMN "member"."notification_sample_size" IS 'Number of featured initiatives per issue in scheduled notification messages';
+COMMENT ON COLUMN "member"."notification_dow"         IS 'Day of week for scheduled notifications (NULL to receive a daily digest)';
+COMMENT ON COLUMN "member"."notification_hour"        IS 'Time of day when scheduled notifications are sent out';
+COMMENT ON COLUMN "member"."notification_sent"        IS 'Timestamp of last scheduled notification mail that has been sent out';
 COMMENT ON COLUMN "member"."login_recovery_expiry"        IS 'Date/time after which another login recovery attempt is allowed';
 COMMENT ON COLUMN "member"."password_reset_secret"        IS 'Secret string sent via e-mail for password recovery';
 COMMENT ON COLUMN "member"."password_reset_secret_expiry" IS 'Date/time until the password recovery secret is valid, and date/time after which another password recovery attempt is allowed';
@@ -792,7 +797,7 @@ CREATE TABLE "ignored_initiative" (
         "initiative_id"         INT4            REFERENCES "initiative" ("id") ON DELETE CASCADE ON UPDATE CASCADE );
 CREATE INDEX "ignored_initiative_initiative_id_idx" ON "ignored_initiative" ("initiative_id");
 
-COMMENT ON TABLE "ignored_initiative" IS 'Possibility to filter initiatives';
+COMMENT ON TABLE "ignored_initiative" IS 'An entry in this table denotes that the member does not wish to receive notifications for the given initiative;
 
 
 CREATE TABLE "initiative_setting" (
@@ -1275,6 +1280,11 @@ CREATE TABLE "notification_initiative_sent" (
         "last_suggestion_id"    INT8 );
 CREATE INDEX "notification_initiative_sent_initiative_idx" ON "notification_initiative_sent" ("initiative_id");
 
+COMMENT ON TABLE "notification_initiative_sent" IS 'Information which initiatives have been promoted to a member in a scheduled notification mail';
+
+COMMENT ON COLUMN "notification_initiative_sent"."last_draft_id"      IS 'Current (i.e. last) draft_id when initiative had been promoted';
+COMMENT ON COLUMN "notification_initiative_sent"."last_suggestion_id" IS 'Current (i.e. last) draft_id when initiative had been promoted';
+
 
 CREATE TABLE "newsletter" (
         "id"                    SERIAL4         PRIMARY KEY,
@@ -1287,6 +1297,15 @@ CREATE TABLE "newsletter" (
 CREATE INDEX "newsletter_unit_id_idx" ON "newsletter" ("unit_id", "published");
 CREATE INDEX "newsletter_all_units_published_idx" ON "newsletter" ("published") WHERE "unit_id" ISNULL;
 CREATE INDEX "newsletter_published_idx" ON "newsletter" ("published");
+
+COMMENT ON TABLE "newsletter" IS 'Contains newsletters created by administrators to be sent out and for further reference';
+
+COMMENT ON COLUMN "newsletter"."published"           IS 'Timestamp when the newsletter is to be sent out (and made available in the frontend)';
+COMMENT ON COLUMN "newsletter"."unit_id"             IS 'If set, only members with voting right in the given unit are considered to be recipients';
+COMMENT ON COLUMN "newsletter"."include_all_members" IS 'TRUE = include all members regardless of their ''disable_notifications'' setting';
+COMMENT ON COLUMN "newsletter"."sent"                IS 'Timestamp when the newsletter has been mailed out';
+COMMENT ON COLUMN "newsletter"."subject"             IS 'Subject line (e.g. to be used for the email)';
+COMMENT ON COLUMN "newsletter"."content"             IS 'Plain text content of the newsletter';
 
 
 
@@ -2366,7 +2385,9 @@ CREATE VIEW "event_for_notification" AS
     ( "event"."event" = 'initiative_revoked'::"event_type" AND
       "supporter"."member_id" NOTNULL ) );
 
-COMMENT ON VIEW "event_for_notification" IS 'TODO: documentation';
+COMMENT ON VIEW "event_for_notification" IS 'Entries of the "event" table which are of interest for a particular notification mail recipient';
+
+COMMENT ON COLUMN "event_for_notification"."recipient_id" IS 'member_id of the recipient of a notification mail';
 
 
 CREATE VIEW "updated_initiative" AS
@@ -2409,6 +2430,9 @@ CREATE VIEW "updated_initiative" AS
       AND "ignored_member"."member_id" ISNULL
     )
   );
+
+COMMENT ON VIEW "updated_initiative" IS 'Helper view for view "updated_or_featured_initiative"';
+
 
 CREATE FUNCTION "featured_initiative"
   ( "recipient_id_p" "member"."id"%TYPE,
@@ -2501,6 +2525,12 @@ CREATE FUNCTION "featured_initiative"
     END;
   $$;
 
+COMMENT ON FUNCTION "featured_initiative"
+  ( "recipient_id_p" "member"."id"%TYPE,
+    "area_id_p"      "area"."id"%TYPE )
+  IS 'Helper function for view "updated_or_featured_initiative"';
+
+
 CREATE VIEW "updated_or_featured_initiative" AS
   SELECT
     "subquery".*,
@@ -2527,6 +2557,14 @@ CREATE VIEW "updated_or_featured_initiative" AS
   ) AS "subquery"
   JOIN "initiative" ON "initiative"."id" = "subquery"."initiative_id";
 
+COMMENT ON VIEW "updated_or_featured_initiative" IS 'Initiatives to be included in a scheduled notification mail because (a) they have been updated or (b) they are featured';
+
+COMMENT ON COLUMN "updated_or_featured_initiative"."recipient_id" IS '"id" of the member who receives the notification mail';
+COMMENT ON COLUMN "updated_or_featured_initiative"."featured" IS 'TRUE if the initiative has been included because it was selected by the "featured_initiative" algorithm (see source of function "featured_initiative")';
+COMMENT ON COLUMN "updated_or_featured_initiative"."initiative_id" IS '"id" of the initiative to be included in the notification mail';
+COMMENT ON COLUMN "updated_or_featured_initiative"."leading" IS 'TRUE if the initiative has the highest "supporter_count" in the issue';
+
+
 CREATE VIEW "leading_complement_initiative" AS
   SELECT * FROM (
     SELECT DISTINCT ON ("uf_initiative"."recipient_id", "initiative"."issue_id")
@@ -2551,6 +2589,12 @@ CREATE VIEW "leading_complement_initiative" AS
     WHERE "other"."recipient_id" = "subquery"."recipient_id"
     AND "other"."initiative_id" = "subquery"."initiative_id"
   );
+
+COMMENT ON VIEW "leading_complement_initiative" IS 'Helper view for view "unfiltered_initiative_for_notification" in order to always include the most supported initiative of an issue';
+COMMENT ON COLUMN "leading_complement_initiative"."featured" IS 'Always FALSE in this view';
+COMMENT ON COLUMN "leading_complement_initiative"."initiative_id" IS '"id" of the initiative to be included in the notification mail';
+COMMENT ON COLUMN "leading_complement_initiative"."leading" IS 'Always TRUE in this view';
+
 
 CREATE VIEW "unfiltered_initiative_for_notification" AS
   SELECT
@@ -2596,6 +2640,13 @@ CREATE VIEW "unfiltered_initiative_for_notification" AS
     "sent"."member_id" = "subquery"."recipient_id" AND
     "sent"."initiative_id" = "subquery"."initiative_id";
 
+COMMENT ON VIEW "unfiltered_initiative_for_notification" IS 'Helper view which simply combines the views "updated_or_featured_initiative" and "leading_complement_initiative" and adds columns "supported", "new_draft", and "new_suggestion_count';
+
+COMMENT ON COLUMN "unfiltered_initiative_for_notification"."supported"            IS 'TRUE if initiative is supported by the recipient';
+COMMENT ON COLUMN "unfiltered_initiative_for_notification"."new_draft"            IS 'TRUE if a new draft exists (using the "draft_id" column of the "supporter" table in case of "supported" initiatives and the "last_draft_id" column of the "notification_initiative_sent" table in all other cases)';
+COMMENT ON COLUMN "unfiltered_initiative_for_notification"."new_suggestion_count" IS 'Number of new suggestions (using the "last_suggestion_id" column of the "notification_initiative_sent" table while ignoring suggestions with an "opinion")';
+
+
 CREATE VIEW "initiative_for_notification" AS
   SELECT "unfiltered1".*
   FROM "unfiltered_initiative_for_notification" "unfiltered1"
@@ -2612,6 +2663,17 @@ CREATE VIEW "initiative_for_notification" AS
     AND "issue1"."area_id" = "issue2"."area_id"
     AND ("unfiltered2"."new_draft" OR "unfiltered2"."new_suggestion_count" > 0 )
   );
+
+COMMENT ON VIEW "initiative_for_notification" IS 'Initiatives to be included in a scheduled notification mail';
+
+COMMENT ON COLUMN "initiative_for_notification"."recipient_id"         IS '"id" of the member who receives the notification mail';
+COMMENT ON COLUMN "initiative_for_notification"."featured"             IS 'TRUE if the initiative has been included because it was selected by the "featured_initiative" algorithm (see source of function "featured_initiative")';
+COMMENT ON COLUMN "initiative_for_notification"."initiative_id"        IS '"id" of the initiative to be included in the notification mail';
+COMMENT ON COLUMN "initiative_for_notification"."leading"              IS 'TRUE if the initiative has the highest "supporter_count" in the issue';
+COMMENT ON COLUMN "initiative_for_notification"."supported"            IS 'TRUE if initiative is supported by the recipient';
+COMMENT ON COLUMN "initiative_for_notification"."new_draft"            IS 'TRUE if a new draft exists (using the "draft_id" column of the "supporter" table in case of "supported" initiatives and the "last_draft_id" column of the "notification_initiative_sent" table in all other cases)';
+COMMENT ON COLUMN "initiative_for_notification"."new_suggestion_count" IS 'Number of new suggestions (using the "last_suggestion_id" column of the "notification_initiative_sent" table while ignoring suggestions with an "opinion")';
+
 
 CREATE VIEW "scheduled_notification_to_send" AS
   SELECT * FROM (
@@ -2651,6 +2713,12 @@ CREATE VIEW "scheduled_notification_to_send" AS
   ) AS "subquery2"
   WHERE "pending" > '0'::INTERVAL;
 
+COMMENT ON VIEW "scheduled_notification_to_send" IS 'Set of members where a scheduled notification mail is pending';
+
+COMMENT ON COLUMN "scheduled_notification_to_send"."recipient_id" IS '"id" of the member who needs to receive a notification mail';
+COMMENT ON COLUMN "scheduled_notification_to_send"."pending"      IS 'Duration for which the notification mail has already been pending';
+
+
 CREATE VIEW "newsletter_to_send" AS
   SELECT
     "member"."id" AS "recipient_id",
@@ -2673,6 +2741,8 @@ CREATE VIEW "newsletter_to_send" AS
     "newsletter"."unit_id" ISNULL OR
     "privilege"."member_id" NOTNULL OR
     "subscription"."member_id" NOTNULL );
+
+COMMENT ON VIEW "newsletter_to_send" IS 'List of "newsletter_id"s for each member that are due to be sent out';
 
 
 
