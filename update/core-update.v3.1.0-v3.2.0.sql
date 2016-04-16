@@ -31,7 +31,18 @@ COMMENT ON COLUMN "member"."notification_hour"        IS 'Time of day when sched
 COMMENT ON COLUMN "member"."notification_sent"        IS 'Timestamp of last scheduled notification mail that has been sent out';
 
 ALTER TABLE "rendered_member_statement" ALTER COLUMN "member_id" SET DATA TYPE INT4;
+
+DROP VIEW "expired_session";
+
 ALTER TABLE "session" ALTER COLUMN "member_id" SET DATA TYPE INT4;
+
+CREATE VIEW "expired_session" AS
+  SELECT * FROM "session" WHERE now() > "expiry";
+CREATE RULE "delete" AS ON DELETE TO "expired_session" DO INSTEAD
+  DELETE FROM "session" WHERE "ident" = OLD."ident";
+
+COMMENT ON VIEW "expired_session" IS 'View containing all expired sessions where DELETE is possible';
+COMMENT ON RULE "delete" ON "expired_session" IS 'Rule allowing DELETE on rows in "expired_session" view, i.e. DELETE FROM "expired_session"';
 
 CREATE TABLE "subscription" (
         PRIMARY KEY ("member_id", "unit_id"),
