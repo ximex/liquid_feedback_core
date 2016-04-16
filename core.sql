@@ -797,7 +797,7 @@ CREATE TABLE "ignored_initiative" (
         "initiative_id"         INT4            REFERENCES "initiative" ("id") ON DELETE CASCADE ON UPDATE CASCADE );
 CREATE INDEX "ignored_initiative_initiative_id_idx" ON "ignored_initiative" ("initiative_id");
 
-COMMENT ON TABLE "ignored_initiative" IS 'An entry in this table denotes that the member does not wish to receive notifications for the given initiative;
+COMMENT ON TABLE "ignored_initiative" IS 'An entry in this table denotes that the member does not wish to receive notifications for the given initiative';
 
 
 CREATE TABLE "initiative_setting" (
