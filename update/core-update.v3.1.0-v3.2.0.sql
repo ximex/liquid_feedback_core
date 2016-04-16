@@ -16,10 +16,11 @@ ALTER TABLE "member" ADD
 
 UPDATE "member" SET "disable_notifications" = TRUE WHERE "notify_level" = 'none'::"notify_level";
 
-ALTER TABLE "member" DROP COLUMN "notify_level";
-
 DROP VIEW "selected_event_seen_by_member";
 DROP VIEW "event_seen_by_member";
+
+ALTER TABLE "member" DROP COLUMN "notify_level";
+
 DROP TYPE "notify_level";
 
 COMMENT ON COLUMN "member"."disable_notifications"    IS 'TRUE if member does not want to receive notifications';
