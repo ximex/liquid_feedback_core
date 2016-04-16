@@ -636,7 +636,9 @@ CREATE FUNCTION "get_initiatives_for_notification"
     END;
   $$;
 
--- TODO: comment missing
+COMMENT ON FUNCTION "get_initiatives_for_notification"
+  ( "member"."id"%TYPE )
+  IS 'Returns rows from view "initiative_for_notification" for a given recipient while updating table "notification_initiative_sent" and columns "notification_counter" and "notification_sent" of "member" table';
 
 CREATE OR REPLACE FUNCTION "delete_member"("member_id_p" "member"."id"%TYPE)
   RETURNS VOID
