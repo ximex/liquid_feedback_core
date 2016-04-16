@@ -3288,6 +3288,10 @@ CREATE FUNCTION "get_initiatives_for_notification"
     END;
   $$;
 
+COMMENT ON FUNCTION "get_initiatives_for_notification"
+  ( "member"."id"%TYPE )
+  IS 'Returns rows from view "initiative_for_notification" for a given recipient while updating table "notification_initiative_sent" and columns "notification_counter" and "notification_sent" of "member" table';
+
 
 
 ------------------------------------------------------------------------
