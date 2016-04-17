@@ -8,7 +8,7 @@ ALTER TABLE "member" ADD COLUMN "disable_notifications"    BOOLEAN NOT NULL DEFA
 ALTER TABLE "member" ADD COLUMN "notification_counter"     INT4    NOT NULL DEFAULT 1;
 ALTER TABLE "member" ADD COLUMN "notification_sample_size" INT4    NOT NULL DEFAULT 3;
 ALTER TABLE "member" ADD COLUMN "notification_dow"         INT4    CHECK ("notification_dow" BETWEEN 0 AND 6);
-ALTER TABLE "member" ADD COLUMN "notification_hour"        INT4    CHECK ("notification_hour" BETWEEN 0 AND 23);
+ALTER TABLE "member" ADD COLUMN "notification_hour"        INT4    DEFAULT floor(random() * 24) CHECK ("notification_hour" BETWEEN 0 AND 23);
 ALTER TABLE "member" ADD COLUMN "notification_sent"        TIMESTAMP;
 ALTER TABLE "member" ADD
   CONSTRAINT "notification_dow_requires_notification_hour"
