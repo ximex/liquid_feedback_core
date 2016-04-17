@@ -2722,7 +2722,8 @@ COMMENT ON COLUMN "scheduled_notification_to_send"."pending"      IS 'Duration f
 CREATE VIEW "newsletter_to_send" AS
   SELECT
     "member"."id" AS "recipient_id",
-    "newsletter"."id" AS "newsletter_id"
+    "newsletter"."id" AS "newsletter_id",
+    "newsletter"."published"
   FROM "newsletter" CROSS JOIN "member"
   LEFT JOIN "privilege" ON
     "privilege"."member_id" = "member"."id" AND
@@ -2743,6 +2744,8 @@ CREATE VIEW "newsletter_to_send" AS
     "subscription"."member_id" NOTNULL );
 
 COMMENT ON VIEW "newsletter_to_send" IS 'List of "newsletter_id"s for each member that are due to be sent out';
+
+COMMENT ON COLUMN "newsletter"."published" IS 'Timestamp when the newsletter was supposed to be sent out (can be used for ordering)';
 
 
 
